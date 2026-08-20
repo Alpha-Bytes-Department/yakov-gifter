@@ -1,0 +1,227 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EZLain Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <link rel="stylesheet" href="{% static 'css/admin_dashboard.css' %}">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="side-logo"><div class="logo-mark">EZ</div><div class="side-copy"><div class="side-brand">EZLain</div><div class="side-sub">Admin</div></div></div>
+      {% include 'admin_dashboard/sidebar.html' with active_page='settings' %}
+      <div class="side-footer"><div class="avatar">RA</div><div><strong id="footerName">Rabbi Admin</strong><br><span style="color:rgba(255,255,255,.45)" id="footerRole">Super Admin</span></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-btn" id="toggleSidebar" aria-label="Toggle sidebar">☰</button>
+        <div class="page-title">Settings</div>
+        <button class="btn primary" id="topSave">Save Settings</button>
+      </header>
+      <section class="content">
+        <form class="settings-wrap" id="settingsForm">
+          <div class="panel">
+            <div class="panel-head">Admin Profile</div>
+            <div class="modal-body settings-grid">
+              <label class="field"><span class="label">Display Name</span><input class="input" id="adminName" value="" required></label>
+              <label class="field"><span class="label">Role</span><input class="input" id="adminRole" value="" required></label>
+              <label class="field"><span class="label">Email</span><input class="input" id="adminEmail" value="" type="email" required></label>
+              <label class="field"><span class="label">Timezone</span><select class="select" id="timezone"><option>Asia/Dhaka</option><option>America/New_York</option><option>Asia/Jerusalem</option><option>Europe/London</option></select></label>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">Platform Preferences</div>
+            <div class="modal-body">
+              <label class="field"><span class="label">Default Upload Status</span><select class="select" id="defaultStatus"><option>Draft</option><option>Published</option><option>Processing</option></select></label>
+              <label class="field"><span class="label">Library Page Size</span><select class="select" id="pageSize"><option>5</option><option selected>10</option><option>25</option><option>50</option></select></label>
+              <div class="switch-row"><div><strong>Email reports</strong><div class="row-meta">Send weekly payment and audio summary.</div></div><button class="toggle on" type="button" data-toggle="emailReports"><span></span></button></div>
+              <div class="switch-row"><div><strong>Auto publish uploads</strong><div class="row-meta">New audio can skip draft review.</div></div><button class="toggle" type="button" data-toggle="autoPublish"><span></span></button></div>
+              <div class="switch-row"><div><strong>Payment alerts</strong><div class="row-meta">Show failed payment notices in admin.</div></div><button class="toggle on" type="button" data-toggle="paymentAlerts"><span></span></button></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">Current Settings</div>
+            <div class="modal-body">
+              <div id="settingsPreview" class="row-meta"></div>
+              <div style="display:flex;justify-content:flex-end;gap:8px">
+                <button class="btn" type="button" id="resetSettings">Reset</button>
+                <button class="btn primary" type="submit">Save Settings</button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const settingsForm = document.getElementById("settingsForm");
+        const topSave = document.getElementById("topSave");
+        const resetBtn = document.getElementById("resetSettings");
+        
+        const defaults = {
+            adminName: "",
+            adminRole: "",
+            adminEmail: "",
+            timezone: "Asia/Dhaka",
+            defaultStatus: "published",
+            pageSize: "10",
+            emailReports: false,
+            autoPublish: false,
+            paymentAlerts: false
+        };
+
+        let localSettings = { ...defaults };
+
+        function readForm() {
+            localSettings.adminName = document.getElementById("adminName").value;
+            localSettings.adminRole = document.getElementById("adminRole").value;
+            localSettings.adminEmail = document.getElementById("adminEmail").value;
+            localSettings.timezone = document.getElementById("timezone").value;
+            localSettings.defaultStatus = document.getElementById("defaultStatus").value;
+            localSettings.pageSize = document.getElementById("pageSize").value;
+        }
+
+        function writeForm() {
+            document.getElementById("adminName").value = localSettings.adminName;
+            document.getElementById("adminRole").value = localSettings.adminRole;
+            document.getElementById("adminEmail").value = localSettings.adminEmail;
+            document.getElementById("timezone").value = localSettings.timezone;
+            document.getElementById("defaultStatus").value = localSettings.defaultStatus;
+            document.getElementById("pageSize").value = localSettings.pageSize;
+            
+            document.querySelectorAll("[data-toggle]").forEach(button => {
+                const key = button.dataset.toggle;
+                button.classList.toggle("on", Boolean(localSettings[key]));
+            });
+            renderPreview();
+        }
+
+        function renderPreview() {
+            document.getElementById("footerName").textContent = localSettings.adminName;
+            document.getElementById("footerRole").textContent = localSettings.adminRole;
+            
+            const emailReportsStatus = localSettings.emailReports ? "on" : "off";
+            const autoPublishStatus = localSettings.autoPublish ? "on" : "off";
+            const paymentAlertsStatus = localSettings.paymentAlerts ? "on" : "off";
+            const defaultStatusLabel = localSettings.defaultStatus === 'published' ? 'Published' : 'Draft';
+            
+            document.getElementById("settingsPreview").innerHTML = `
+                <strong>${localSettings.adminName}</strong> (${localSettings.adminRole}) uses ${localSettings.timezone}.<br>
+                Uploads default to ${defaultStatusLabel}. Tables show ${localSettings.pageSize} rows.<br>
+                Email reports are ${emailReportsStatus}, auto publish is ${autoPublishStatus}, and payment alerts are ${paymentAlertsStatus}.
+            `;
+        }
+
+        // Toggle switches
+        document.querySelectorAll("[data-toggle]").forEach(button => {
+            button.addEventListener("click", () => {
+                const key = button.dataset.toggle;
+                localSettings[key] = !localSettings[key];
+                button.classList.toggle("on", localSettings[key]);
+                renderPreview();
+            });
+        });
+
+        // Dynamic change updates
+        document.querySelectorAll("input, select").forEach(input => {
+            input.addEventListener("input", () => {
+                readForm();
+                renderPreview();
+            });
+        });
+
+        async function loadSettings() {
+            try {
+                const res = await apiFetch('/core/admin/settings/');
+                if (res.ok) {
+                    const responseData = await res.json();
+                    const settings = Array.isArray(responseData) ? responseData[0] : responseData;
+                    
+                    if (settings) {
+                        if (settings.admin_profile) {
+                            localSettings.adminName = settings.admin_profile.name;
+                            localSettings.adminEmail = settings.admin_profile.email;
+                            localSettings.adminRole = settings.admin_profile.role;
+                        }
+                        localSettings.emailReports = settings.email_reports;
+                        localSettings.autoPublish = settings.auto_publish_uploads;
+                        localSettings.paymentAlerts = settings.payment_alerts;
+                        localSettings.defaultStatus = settings.default_upload_status;
+                        localSettings.pageSize = String(settings.library_page_size);
+                        writeForm();
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        if (settingsForm) {
+            settingsForm.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                readForm();
+
+                const payload = {
+                    admin_profile: {
+                        name: localSettings.adminName,
+                        email: localSettings.adminEmail
+                    },
+                    email_reports: localSettings.emailReports,
+                    auto_publish_uploads: localSettings.autoPublish,
+                    payment_alerts: localSettings.paymentAlerts,
+                    default_upload_status: localSettings.defaultStatus,
+                    library_page_size: parseInt(localSettings.pageSize)
+                };
+
+                try {
+                    const res = await apiFetch('/core/admin/settings/', {
+                        method: 'POST',
+                        body: JSON.stringify(payload)
+                    });
+                    if (res.ok) {
+                        toast("Settings saved successfully");
+                        renderPreview();
+                    } else {
+                        toast("Failed to save settings");
+                    }
+                } catch (e) {
+                    console.error(e);
+                    toast("Network Error");
+                }
+            });
+        }
+
+        if (topSave) {
+            topSave.onclick = () => {
+                if (settingsForm) {
+                    settingsForm.requestSubmit();
+                }
+            };
+        }
+
+        if (resetBtn) {
+            resetBtn.onclick = () => {
+                localSettings = { ...defaults };
+                writeForm();
+                toast("Settings reset to defaults");
+            };
+        }
+
+        loadSettings();
+    });
+  </script>
+
+  <script src="{% static 'js/admin_core.js' %}"></script>
+</body>
+</html>

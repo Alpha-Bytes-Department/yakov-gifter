@@ -1,0 +1,53 @@
+<nav class="nav">
+  <div class="nav-title">Overview</div>
+  <a class="nav-item {% if active_page == 'dashboard' %}active{% endif %}" href="{% url 'admin_dashboard_overview' %}">
+    <span style="margin-right:12px;font-size:16px;">📊</span>
+    <span>Dashboard</span>
+  </a>
+  <a class="nav-item {% if active_page == 'analytics' %}active{% endif %}" href="{% url 'admin_dashboard_analytics' %}">
+    <span style="margin-right:12px;font-size:16px;">📈</span>
+    <span>Analytics</span>
+  </a>
+  
+  <div class="nav-title">Content</div>
+  <a class="nav-item {% if active_page == 'audio' %}active{% endif %}" href="{% url 'admin_dashboard_audio' %}">
+    <span style="margin-right:12px;font-size:16px;">🎵</span>
+    <span>Audio Library</span>
+  </a>
+  <a class="nav-item {% if active_page == 'schedule' %}active{% endif %}" href="{% url 'admin_dashboard_schedule' %}">
+    <span style="margin-right:12px;font-size:16px;">📅</span>
+    <span>Reading Schedule</span>
+  </a>
+  <a class="nav-item {% if active_page == 'testimonials' %}active{% endif %}" href="{% url 'admin_dashboard_testimonials' %}">
+    <span style="margin-right:12px;font-size:16px;">💬</span>
+    <span>Testimonials</span>
+  </a>
+  
+  <div class="nav-title">Users</div>
+  <a class="nav-item {% if active_page == 'users' %}active{% endif %}" href="{% url 'admin_dashboard_users' %}">
+    <span style="margin-right:12px;font-size:16px;">👥</span>
+    <span>All Users</span>
+  </a>
+  <a class="nav-item {% if active_page == 'coaching' %}active{% endif %}" href="{% url 'admin_dashboard_coaching' %}">
+    <span style="margin-right:12px;font-size:16px;">🎓</span>
+    <span>Coaching</span>
+  </a>
+  <a class="nav-item {% if active_page == 'feedback' %}active{% endif %}" href="{% url 'admin_dashboard_feedback' %}">
+    <span style="margin-right:12px;font-size:16px;">📝</span>
+    <span>Feedback</span>
+  </a>
+  <a class="nav-item {% if active_page == 'payments' %}active{% endif %}" href="{% url 'admin_dashboard_payments' %}">
+    <span style="margin-right:12px;font-size:16px;">💳</span>
+    <span>Payments</span>
+  </a>
+  <a class="nav-item {% if active_page == 'notifications' %}active{% endif %}" href="{% url 'admin_dashboard_notifications' %}">
+    <span style="margin-right:12px;font-size:16px;">🔔</span>
+    <span>Notifications</span>
+  </a>
+  
+  <div class="nav-title">System</div>
+  <a class="nav-item {% if active_page == 'settings' %}active{% endif %}" href="{% url 'admin_dashboard_settings' %}">
+    <span style="margin-right:12px;font-size:16px;">⚙️</span>
+    <span>Settings</span>
+  </a>
+</nav>

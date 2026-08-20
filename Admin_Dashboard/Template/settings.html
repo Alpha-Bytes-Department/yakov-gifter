@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EZLain Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="side-logo"><div class="logo-mark">EZ</div><div class="side-copy"><div class="side-brand">EZLain</div><div class="side-sub">Admin</div></div></div>
+      <nav class="nav">
+        <div class="nav-title">Overview</div><a class="nav-item" href="./dashboard.html">[ ] <span>Dashboard</span></a><a class="nav-item" href="./analytics.html">[-] <span>Analytics</span></a>
+        <div class="nav-title">Content</div><a class="nav-item" href="./audio-upload.html">♪ <span>Audio Library</span></a>
+        <div class="nav-title">Users</div><a class="nav-item" href="./payments.html">[$] <span>Payments</span></a><a class="nav-item" href="./notifications.html">[!] <span>Notifications</span></a>
+        <div class="nav-title">System</div><a class="nav-item active" href="./settings.html">[*] <span>Settings</span></a>
+      </nav>
+      <div class="side-footer"><div class="avatar">RA</div><div><strong id="footerName">Rabbi Admin</strong><br><span style="color:rgba(255,255,255,.45)" id="footerRole">Super Admin</span></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-btn" id="toggleSidebar" aria-label="Toggle sidebar">☰</button>
+        <div class="page-title">Settings</div>
+        <button class="btn primary" id="topSave">Save Settings</button>
+      </header>
+      <section class="content">
+        <form class="settings-wrap" id="settingsForm">
+          <div class="panel">
+            <div class="panel-head">Admin Profile</div>
+            <div class="modal-body settings-grid">
+              <label class="field"><span class="label">Display Name</span><input class="input" id="adminName" value="Rabbi Admin" required></label>
+              <label class="field"><span class="label">Role</span><input class="input" id="adminRole" value="Super Admin" required></label>
+              <label class="field"><span class="label">Email</span><input class="input" id="adminEmail" value="admin@ezlain.app" type="email" required></label>
+              <label class="field"><span class="label">Timezone</span><select class="select" id="timezone"><option>Asia/Dhaka</option><option>America/New_York</option><option>Asia/Jerusalem</option><option>Europe/London</option></select></label>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">Platform Preferences</div>
+            <div class="modal-body">
+              <label class="field"><span class="label">Default Upload Status</span><select class="select" id="defaultStatus"><option>Draft</option><option>Published</option><option>Processing</option></select></label>
+              <label class="field"><span class="label">Library Page Size</span><select class="select" id="pageSize"><option>5</option><option selected>10</option><option>25</option><option>50</option></select></label>
+              <div class="switch-row"><div><strong>Email reports</strong><div class="row-meta">Send weekly payment and audio summary.</div></div><button class="toggle on" type="button" data-toggle="emailReports"><span></span></button></div>
+              <div class="switch-row"><div><strong>Auto publish uploads</strong><div class="row-meta">New audio can skip draft review.</div></div><button class="toggle" type="button" data-toggle="autoPublish"><span></span></button></div>
+              <div class="switch-row"><div><strong>Payment alerts</strong><div class="row-meta">Show failed payment notices in admin.</div></div><button class="toggle on" type="button" data-toggle="paymentAlerts"><span></span></button></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">Current Settings</div>
+            <div class="modal-body">
+              <div id="settingsPreview" class="row-meta"></div>
+              <div style="display:flex;justify-content:flex-end;gap:8px">
+                <button class="btn" type="button" id="resetSettings">Reset</button>
+                <button class="btn primary" type="submit">Save Settings</button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const defaults = {
+      adminName: "Rabbi Admin",
+      adminRole: "Super Admin",
+      adminEmail: "admin@ezlain.app",
+      timezone: "Asia/Dhaka",
+      defaultStatus: "Draft",
+      pageSize: "10",
+      emailReports: true,
+      autoPublish: false,
+      paymentAlerts: true
+    };
+    let settings = { ...defaults };
+
+    function toast(message) {
+      const el = document.getElementById("toast");
+      el.textContent = message;
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 1800);
+    }
+
+    function readForm() {
+      settings.adminName = document.getElementById("adminName").value;
+      settings.adminRole = document.getElementById("adminRole").value;
+      settings.adminEmail = document.getElementById("adminEmail").value;
+      settings.timezone = document.getElementById("timezone").value;
+      settings.defaultStatus = document.getElementById("defaultStatus").value;
+      settings.pageSize = document.getElementById("pageSize").value;
+    }
+
+    function writeForm() {
+      document.getElementById("adminName").value = settings.adminName;
+      document.getElementById("adminRole").value = settings.adminRole;
+      document.getElementById("adminEmail").value = settings.adminEmail;
+      document.getElementById("timezone").value = settings.timezone;
+      document.getElementById("defaultStatus").value = settings.defaultStatus;
+      document.getElementById("pageSize").value = settings.pageSize;
+      document.querySelectorAll("[data-toggle]").forEach((button) => button.classList.toggle("on", Boolean(settings[button.dataset.toggle])));
+      renderPreview();
+    }
+
+    function renderPreview() {
+      document.getElementById("footerName").textContent = settings.adminName;
+      document.getElementById("footerRole").textContent = settings.adminRole;
+      document.getElementById("settingsPreview").innerHTML = `
+        <strong>${settings.adminName}</strong> (${settings.adminRole}) uses ${settings.timezone}.<br>
+        Uploads default to ${settings.defaultStatus}. Tables show ${settings.pageSize} rows.
+        Email reports are ${settings.emailReports ? "on" : "off"}, auto publish is ${settings.autoPublish ? "on" : "off"}, and payment alerts are ${settings.paymentAlerts ? "on" : "off"}.
+      `;
+    }
+
+    document.querySelectorAll("[data-toggle]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const key = button.dataset.toggle;
+        settings[key] = !settings[key];
+        button.classList.toggle("on", settings[key]);
+        renderPreview();
+      });
+    });
+    document.querySelectorAll("input, select").forEach((input) => input.addEventListener("input", () => { readForm(); renderPreview(); }));
+    document.getElementById("settingsForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      readForm();
+      renderPreview();
+      toast("Settings saved");
+    });
+    document.getElementById("topSave").addEventListener("click", () => document.getElementById("settingsForm").requestSubmit());
+    document.getElementById("resetSettings").addEventListener("click", () => {
+      settings = { ...defaults };
+      writeForm();
+      toast("Settings reset");
+    });
+    document.getElementById("toggleSidebar").addEventListener("click", () => document.querySelector(".sidebar").classList.toggle("hidden"));
+    writeForm();
+  </script>
+</body>
+</html>

@@ -1,0 +1,485 @@
+{
+  "info": {
+    "name": "Ezlain Backend API",
+    "description": "Postman collection for the Ezlain Backend API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"John Doe\",\n  \"email\": \"john@example.com\",\n  \"password\": \"securepassword123\",\n  \"password_confirm\": \"securepassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/accounts/register/",
+              "host": ["{{base_url}}"],
+              "path": ["accounts", "register", ""]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\",\n  \"password\": \"securepassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/accounts/login/",
+              "host": ["{{base_url}}"],
+              "path": ["accounts", "login", ""]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh\": \"<refresh_token_here>\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/accounts/logout/",
+              "host": ["{{base_url}}"],
+              "path": ["accounts", "logout", ""]
+            }
+          }
+        },
+        {
+          "name": "Request Password Reset",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/accounts/password-reset/",
+              "host": ["{{base_url}}"],
+              "path": ["accounts", "password-reset", ""]
+            }
+          }
+        },
+        {
+          "name": "Confirm Password Reset",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"uid\": \"<uid_b64_here>\",\n  \"token\": \"<token_here>\",\n  \"new_password\": \"newsecurepassword123\",\n  \"new_password_confirm\": \"newsecurepassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/accounts/password-reset-confirm/",
+              "host": ["{{base_url}}"],
+              "path": ["accounts", "password-reset-confirm", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Accounts",
+      "item": [
+        {
+          "name": "Get Profile (Me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/accounts/users/me/",
+              "host": ["{{base_url}}"],
+              "path": ["accounts", "users", "me", ""]
+            }
+          }
+        },
+        {
+          "name": "Update Profile (Me)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"John\",\n  \"last_name\": \"Doe\",\n  \"date_of_birth\": \"2013-05-15\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/accounts/users/me/",
+              "host": ["{{base_url}}"],
+              "path": ["accounts", "users", "me", ""]
+            }
+          }
+        },
+        {
+          "name": "Link Child",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"invite_code\": \"<child_invite_code>\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/accounts/link-child/",
+              "host": ["{{base_url}}"],
+              "path": ["accounts", "link-child", ""]
+            }
+          }
+        },
+        {
+          "name": "Referrals",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/accounts/users/referrals/",
+              "host": ["{{base_url}}"],
+              "path": ["accounts", "users", "referrals", ""]
+            }
+          }
+        },
+        {
+          "name": "Request Coaching",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"John Doe\",\n  \"phone\": \"+1234567890\",\n  \"email\": \"john@example.com\",\n  \"preferred_times\": \"Sundays 10am-2pm\",\n  \"coaching_type\": \"zoom\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/accounts/users/coaching/",
+              "host": ["{{base_url}}"],
+              "path": ["accounts", "users", "coaching", ""]
+            }
+          }
+        },
+        {
+          "name": "Send Feedback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Awesome app, keep up the good work!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/accounts/users/feedback/",
+              "host": ["{{base_url}}"],
+              "path": ["accounts", "users", "feedback", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Parshas & Shabbat Calendar",
+      "item": [
+        {
+          "name": "List Parshas (Searchable)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/parshas/list/?search=Bereishit",
+              "host": ["{{base_url}}"],
+              "path": ["parshas", "list", ""],
+              "query": [
+                {"key": "search", "value": "Bereishit"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Monthly Shabbat Calendar",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/parshas/calendar/?month=5&year=2026",
+              "host": ["{{base_url}}"],
+              "path": ["parshas", "calendar", ""],
+              "query": [
+                {"key": "month", "value": "5"},
+                {"key": "year", "value": "2026"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Next Upcoming Shabbat (Countdown)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/parshas/calendar/next/",
+              "host": ["{{base_url}}"],
+              "path": ["parshas", "calendar", "next", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Progress & Parent Dashboard",
+      "item": [
+        {
+          "name": "Update Segment Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parsha_id\": 1,\n  \"segment_type\": \"aliya_3\",\n  \"status\": \"completed\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/progress/update_status/",
+              "host": ["{{base_url}}"],
+              "path": ["progress", "update_status", ""]
+            }
+          }
+        },
+        {
+          "name": "Get Child's Progress Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/progress/dashboard/?child_id=1",
+              "host": ["{{base_url}}"],
+              "path": ["progress", "dashboard", ""],
+              "query": [
+                {"key": "child_id", "value": "1"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Child's Progress History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/progress/history/?child_id=1",
+              "host": ["{{base_url}}"],
+              "path": ["progress", "history", ""],
+              "query": [
+                {"key": "child_id", "value": "1"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Content & Audio Player",
+      "item": [
+        {
+          "name": "List Audio Tracks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/content/tracks/?category=chumash",
+              "host": ["{{base_url}}"],
+              "path": ["content", "tracks", ""],
+              "query": [
+                {"key": "category", "value": "chumash"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Listening Progress for Track",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/content/listening-history/?track_id=1",
+              "host": ["{{base_url}}"],
+              "path": ["content", "listening-history", ""],
+              "query": [
+                {"key": "track_id", "value": "1"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Listening Progress",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"track_id\": 1,\n  \"last_position_seconds\": 192,\n  \"completed\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/content/listening-history/",
+              "host": ["{{base_url}}"],
+              "path": ["content", "listening-history", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments (RevenueCat)",
+      "item": [
+        {
+          "name": "Sync Status",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rc_original_app_user_id\": \"test_rc_user_123\",\n  \"is_pro\": true,\n  \"plan_name\": \"Monthly Pro\",\n  \"price\": 5.00\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payments/sync_status/",
+              "host": ["{{base_url}}"],
+              "path": ["payments", "sync_status", ""]
+            }
+          }
+        },
+        {
+          "name": "RevenueCat Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": {\n    \"type\": \"INITIAL_PURCHASE\",\n    \"app_user_id\": \"test_rc_user_123\",\n    \"product_id\": \"monthly_pro_5\",\n    \"price\": 5.00,\n    \"expiration_at_ms\": 1720368000000\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/payments/webhook/",
+              "host": ["{{base_url}}"],
+              "path": ["payments", "webhook", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Dashboard",
+      "item": [
+        {
+          "name": "Admin Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/core/admin/summary/",
+              "host": ["{{base_url}}"],
+              "path": ["core", "admin", "summary", ""]
+            }
+          }
+        },
+        {
+          "name": "Admin Analytics Charts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/core/admin/analytics/",
+              "host": ["{{base_url}}"],
+              "path": ["core", "admin", "analytics", ""]
+            }
+          }
+        },
+        {
+          "name": "Admin Settings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}"}
+            ],
+            "url": {
+              "raw": "{{base_url}}/core/admin/settings/",
+              "host": ["{{base_url}}"],
+              "path": ["core", "admin", "settings", ""]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "your_access_token_here",
+      "type": "string"
+    }
+  ]
+}

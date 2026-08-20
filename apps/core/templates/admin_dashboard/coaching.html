@@ -1,0 +1,182 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EZLain Coaching Requests</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <link rel="stylesheet" href="{% static 'css/admin_dashboard.css' %}">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="side-logo"><div class="logo-mark">EZ</div><div class="side-copy"><div class="side-brand">EZLain</div><div class="side-sub">Admin</div></div></div>
+      {% include 'admin_dashboard/sidebar.html' with active_page='coaching' %}
+      <div class="side-footer"><div class="avatar">RA</div><div><strong>Rabbi Admin</strong><br><span style="color:rgba(255,255,255,.45)">Super Admin</span></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-btn" id="toggleSidebar" aria-label="Toggle sidebar">☰</button>
+        <div class="page-title">Coaching Requests</div>
+      </header>
+      <section class="content">
+        <div class="single-column">
+          <div class="toolbar">
+            <input class="toolbar-search" id="search" style="flex:1" placeholder="Search requests by name or email...">
+            <select class="chip" id="typeFilter">
+                <option value="All">All Types</option>
+                <option value="In-person Staten Island">In-person Staten Island</option>
+                <option value="In-person Brooklyn">In-person Brooklyn</option>
+                <option value="Zoom worldwide">Zoom worldwide</option>
+            </select>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">Recent Requests <span id="countText" class="row-meta"></span></div>
+            <div id="requestRows"></div>
+            <div class="footer"><span id="rangeText"></span><div class="pages" id="pages"></div></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const rowsEl = document.getElementById("requestRows");
+        const pagesEl = document.getElementById("pages");
+        
+        let requests = [];
+        const state = { page: 1, perPage: 10, query: "", type: "All" };
+
+        async function loadRequests() {
+            try {
+                const res = await apiFetch('/core/admin/coaching_requests/');
+                if (res.ok) {
+                    const responseData = await res.json();
+                    requests = responseData.data || responseData;
+                    render();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function filteredRequests() {
+            const q = state.query.toLowerCase();
+            return requests.filter(item => {
+                const name = item.user_name || item.name || '';
+                const email = item.user_email || item.email || '';
+                const phone = item.phone || '';
+                const matchQuery = [name, email, phone].join(" ").toLowerCase().includes(q);
+                const matchType = state.type === "All" || item.coaching_type === state.type;
+                return matchQuery && matchType;
+            });
+        }
+
+        function render() {
+            const rows = filteredRequests();
+            const totalPages = Math.max(1, Math.ceil(rows.length / state.perPage));
+            if (state.page > totalPages) state.page = totalPages;
+            
+            const start = (state.page - 1) * state.perPage;
+            const pageRows = rows.slice(start, start + state.perPage);
+            
+            if (rowsEl) {
+                rowsEl.innerHTML = pageRows.length ? pageRows.map(item => {
+                    const name = item.user_name || item.name || 'User';
+                    const email = item.user_email || item.email || '';
+                    const phone = item.phone || '';
+                    const date = new Date(item.created_at).toLocaleString();
+                    const status = item.status || 'Pending';
+                    const isContacted = status === 'Contacted';
+                    
+                    const statusBadge = isContacted
+                        ? `<span class="badge" style="background:#e6f4ea;color:#137333;font-weight:700;">CONTACTED</span>`
+                        : `<span class="badge" style="background:#fef7e0;color:#b06000;font-weight:700;">PENDING</span>`;
+
+                    return `
+                        <div class="row" style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--a-border);background:white;">
+                            <div style="display:flex;align-items:center;gap:14px;">
+                                <div class="thumb" style="border-radius:50%;background:var(--a-surf);width:36px;height:36px;display:flex;align-items:center;justify-content:center;">👤</div>
+                                <div class="row-main">
+                                    <div class="row-title">
+                                        <strong>${name}</strong> 
+                                        <span style="font-weight:normal;color:var(--text3);font-size:12px;">(${item.coaching_type})</span>
+                                        ${statusBadge}
+                                    </div>
+                                    <div><a href="mailto:${email}" style="color:var(--primary);text-decoration:none;">${email}</a> ${phone ? `· ${phone}` : ''}</div>
+                                    <div class="row-meta" style="margin-top:2px">${date}</div>
+                                </div>
+                            </div>
+                            <div>
+                                <button type="button" class="btn status-toggle-btn" data-id="${item.id}" data-status="${isContacted ? 'Pending' : 'Contacted'}" style="font-size:12px;padding:6px 12px;background:${isContacted ? 'var(--a-surf)' : 'var(--primary)'};color:${isContacted ? 'var(--text-primary)' : 'white'};">
+                                    Mark as ${isContacted ? '⏳ Pending' : '✅ Contacted'}
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join("") : `<div class="empty" style="padding:24px;text-align:center;">No coaching requests found.</div>`;
+            }
+
+            document.getElementById("countText").textContent = `${rows.length} total`;
+            document.getElementById("rangeText").textContent = rows.length ? `Showing ${start + 1}-${Math.min(start + state.perPage, rows.length)} of ${rows.length}` : "Showing 0";
+            
+            if (pagesEl) {
+                pagesEl.innerHTML = totalPages > 1 ? Array.from({ length: totalPages }, (_, i) => 
+                    `<button class="page ${state.page === i + 1 ? "active" : ""}" data-page="${i + 1}">${i + 1}</button>`
+                ).join("") : "";
+
+                document.querySelectorAll("[data-page]").forEach(b => b.onclick = () => {
+                    state.page = Number(b.dataset.page);
+                    render();
+                });
+            }
+        }
+
+        document.addEventListener('click', async (e) => {
+            const toggleBtn = e.target.closest('.status-toggle-btn');
+            if (toggleBtn) {
+                const reqId = toggleBtn.dataset.id;
+                const newStatus = toggleBtn.dataset.status;
+                try {
+                    const res = await apiFetch(`/core/admin/coaching_requests/${reqId}/`, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ status: newStatus })
+                    });
+                    if (res.ok) {
+                        toast(`Marked as ${newStatus}`);
+                        loadRequests();
+                    } else {
+                        toast("Failed to update status");
+                    }
+                } catch (err) {
+                    toast("Network error");
+                }
+            }
+        });
+
+        document.getElementById("search").oninput = () => {
+            state.query = document.getElementById("search").value;
+            state.page = 1;
+            render();
+        };
+
+        document.getElementById("typeFilter").onchange = () => {
+            state.type = document.getElementById("typeFilter").value;
+            state.page = 1;
+            render();
+        };
+
+        loadRequests();
+    });
+  </script>
+
+  <script src="{% static 'js/admin_core.js' %}"></script>
+</body>
+</html>

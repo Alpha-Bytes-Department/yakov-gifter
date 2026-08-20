@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EZLain Payments</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="side-logo"><div class="logo-mark">EZ</div><div class="side-copy"><div class="side-brand">EZLain</div><div class="side-sub">Admin</div></div></div>
+      <nav class="nav">
+        <div class="nav-title">Overview</div><a class="nav-item" href="./dashboard.html">[ ] <span>Dashboard</span></a><a class="nav-item" href="./analytics.html">[-] <span>Analytics</span></a>
+        <div class="nav-title">Content</div><a class="nav-item" href="./audio-upload.html">♪ <span>Audio Library</span></a>
+        <div class="nav-title">Users</div><a class="nav-item active" href="./payments.html">[$] <span>Payments</span></a><a class="nav-item" href="./notifications.html">[!] <span>Notifications</span></a>
+        <div class="nav-title">System</div><a class="nav-item" href="./settings.html">[*] <span>Settings</span></a>
+      </nav>
+      <div class="side-footer"><div class="avatar">RA</div><div><strong>Rabbi Admin</strong><br><span style="color:rgba(255,255,255,.45)">Super Admin</span></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-btn" id="toggleSidebar" aria-label="Toggle sidebar">☰</button>
+        <div class="page-title">Payments</div>
+        <div class="top-actions"><button class="btn primary" id="topExport">Export CSV</button></div>
+      </header>
+      <section class="content">
+        <div class="stats">
+          <div class="stat"><div class="stat-label">Paid Revenue</div><div class="stat-value" id="paidRevenue">$0.00</div><div class="stat-delta" id="paidCount">0 paid rows</div></div>
+          <div class="stat amber"><div class="stat-label">Annual Plans</div><div class="stat-value" id="annualCount">0</div><div class="stat-delta">in ledger</div></div>
+          <div class="stat blue"><div class="stat-label">Failed Payments</div><div class="stat-value" id="failedCount">0</div><div class="stat-delta">needs follow-up</div></div>
+          <div class="stat violet"><div class="stat-label">Pending Payments</div><div class="stat-value" id="pendingCount">0</div><div class="stat-delta">awaiting capture</div></div>
+        </div>
+
+        <div class="toolbar" style="margin-top:16px">
+          <input class="toolbar-search" id="search" placeholder="Search payments...">
+          <select class="chip" id="statusFilter">
+            <option value="All">All status</option>
+            <option value="Paid">Paid</option>
+            <option value="Pending">Pending</option>
+            <option value="Failed">Failed</option>
+          </select>
+          <select class="chip" id="planFilter">
+            <option value="All">All plans</option>
+            <option value="Annual Pro">Annual Pro</option>
+            <option value="Monthly Pro">Monthly Pro</option>
+          </select>
+          <div style="margin-left:auto"><button class="btn" id="exportCsv">Export CSV</button></div>
+        </div>
+
+        <div class="table">
+          <div class="table-head payments-grid"><div>User</div><div>Plan</div><div>Amount</div><div>Status</div><div>Method</div><div>Date</div></div>
+          <div id="paymentRows"></div>
+          <div class="footer"><span id="rangeText"></span><div class="pages" id="pages"></div></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const names = ["Yosef Miller", "Miriam Katz", "Eli Cohen", "Sara Weiss", "Dovid Klein", "Rachel Stein", "Moshe Green", "Leah Rosen", "Ari Feld", "Tamar Levy"];
+    const methods = ["Visa", "Mastercard", "Stripe", "Amex"];
+    const statuses = ["Paid", "Paid", "Paid", "Paid", "Pending", "Failed"];
+    const payments = Array.from({ length: 50 }, (_, index) => {
+      const plan = index % 5 === 0 ? "Annual Pro" : "Monthly Pro";
+      const status = statuses[index % statuses.length];
+      const amount = plan === "Annual Pro" ? 49 : 5.99;
+      return {
+        id: index + 1,
+        name: names[index % names.length],
+        email: names[index % names.length].toLowerCase().replaceAll(" ", ".") + (index + 1) + "@example.com",
+        plan,
+        amount,
+        status,
+        method: methods[index % methods.length],
+        date: `Jun ${28 - (index % 28)}, 2026`
+      };
+    });
+
+    const state = { page: 1, perPage: 10, query: "", status: "All", plan: "All" };
+    const rowsEl = document.getElementById("paymentRows");
+    const pagesEl = document.getElementById("pages");
+    const rangeText = document.getElementById("rangeText");
+
+    function toast(message) {
+      const el = document.getElementById("toast");
+      el.textContent = message;
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 1800);
+    }
+
+    function filteredPayments() {
+      const q = state.query.toLowerCase();
+      return payments.filter((row) => {
+        const matchQuery = [row.name, row.email, row.plan, row.status, row.method].join(" ").toLowerCase().includes(q);
+        const matchStatus = state.status === "All" || row.status === state.status;
+        const matchPlan = state.plan === "All" || row.plan === state.plan;
+        return matchQuery && matchStatus && matchPlan;
+      });
+    }
+
+    function money(value) {
+      return "$" + value.toFixed(2);
+    }
+
+    function statusClass(status) {
+      if (status === "Pending") return "badge processing";
+      if (status === "Failed") return "badge draft";
+      return "badge";
+    }
+
+    function renderStats() {
+      const paid = payments.filter((row) => row.status === "Paid");
+      const revenue = paid.reduce((sum, row) => sum + row.amount, 0);
+      document.getElementById("paidRevenue").textContent = money(revenue);
+      document.getElementById("paidCount").textContent = `${paid.length} paid rows`;
+      document.getElementById("annualCount").textContent = payments.filter((row) => row.plan === "Annual Pro").length;
+      document.getElementById("failedCount").textContent = payments.filter((row) => row.status === "Failed").length;
+      document.getElementById("pendingCount").textContent = payments.filter((row) => row.status === "Pending").length;
+    }
+
+    function render() {
+      const rows = filteredPayments();
+      const totalPages = Math.max(1, Math.ceil(rows.length / state.perPage));
+      if (state.page > totalPages) state.page = totalPages;
+      const start = (state.page - 1) * state.perPage;
+      const pageRows = rows.slice(start, start + state.perPage);
+      rowsEl.innerHTML = pageRows.length ? pageRows.map((row) => `
+        <div class="table-row payments-grid">
+          <div><strong>${row.name}</strong><div class="row-meta">${row.email}</div></div>
+          <div>${row.plan}</div>
+          <div class="metric">${money(row.amount)}</div>
+          <span class="${statusClass(row.status)}">${row.status}</span>
+          <div>${row.method}</div>
+          <div>${row.date}</div>
+        </div>
+      `).join("") : `<div class="empty">No payments found.</div>`;
+      rangeText.textContent = rows.length ? `Showing ${start + 1}-${Math.min(start + state.perPage, rows.length)} of ${rows.length} payments` : "Showing 0 payments";
+      pagesEl.innerHTML = Array.from({ length: totalPages }, (_, i) => `<button class="page ${state.page === i + 1 ? "active" : ""}" data-page="${i + 1}">${i + 1}</button>`).join("");
+    }
+
+    function exportCsv() {
+      const rows = filteredPayments();
+      const header = ["Name", "Email", "Plan", "Amount", "Status", "Method", "Date"];
+      const body = rows.map((row) => [row.name, row.email, row.plan, row.amount, row.status, row.method, row.date]);
+      const csv = [header, ...body].map((line) => line.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(",")).join("\n");
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+      link.download = "ezlain-payments.csv";
+      link.click();
+      URL.revokeObjectURL(link.href);
+      toast("Payments CSV downloaded");
+    }
+
+    document.getElementById("search").addEventListener("input", (event) => { state.query = event.target.value; state.page = 1; render(); });
+    document.getElementById("statusFilter").addEventListener("change", (event) => { state.status = event.target.value; state.page = 1; render(); });
+    document.getElementById("planFilter").addEventListener("change", (event) => { state.plan = event.target.value; state.page = 1; render(); });
+    pagesEl.addEventListener("click", (event) => { if (event.target.dataset.page) { state.page = Number(event.target.dataset.page); render(); } });
+    document.getElementById("exportCsv").addEventListener("click", exportCsv);
+    document.getElementById("topExport").addEventListener("click", exportCsv);
+    document.getElementById("toggleSidebar").addEventListener("click", () => document.querySelector(".sidebar").classList.toggle("hidden"));
+
+    renderStats();
+    render();
+  </script>
+</body>
+</html>

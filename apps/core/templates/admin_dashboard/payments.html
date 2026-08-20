@@ -1,0 +1,243 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EZLain Payments</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <link rel="stylesheet" href="{% static 'css/admin_dashboard.css' %}">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="side-logo"><div class="logo-mark">EZ</div><div class="side-copy"><div class="side-brand">EZLain</div><div class="side-sub">Admin</div></div></div>
+      {% include 'admin_dashboard/sidebar.html' with active_page='payments' %}
+      <div class="side-footer"><div class="avatar">RA</div><div><strong>Rabbi Admin</strong><br><span style="color:rgba(255,255,255,.45)">Super Admin</span></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-btn" id="toggleSidebar" aria-label="Toggle sidebar">☰</button>
+        <div class="page-title">Payments</div>
+        <div class="top-actions"><button class="btn primary" id="topExport">📥 Export CSV</button></div>
+      </header>
+      <section class="content">
+        <div class="stats">
+          <div class="stat"><div class="stat-label">Paid Revenue</div><div class="stat-value" id="paidRevenue">$0.00</div><div class="stat-delta" id="paidCount">0 paid rows</div></div>
+          <div class="stat amber"><div class="stat-label">Annual Plans</div><div class="stat-value" id="annualCount">0</div><div class="stat-delta">in ledger</div></div>
+          <div class="stat blue"><div class="stat-label">Failed Payments</div><div class="stat-value" id="failedCount">0</div><div class="stat-delta">needs follow-up</div></div>
+          <div class="stat violet"><div class="stat-label">Pending Payments</div><div class="stat-value" id="pendingCount">0</div><div class="stat-delta">awaiting capture</div></div>
+        </div>
+
+        <div class="toolbar" style="margin-top:16px">
+          <input class="toolbar-search" id="search" placeholder="Search payments...">
+          <select class="chip" id="statusFilter">
+            <option value="All">All status</option>
+            <option value="Paid">Paid</option>
+            <option value="Pending">Pending</option>
+            <option value="Failed">Failed</option>
+          </select>
+          <select class="chip" id="planFilter">
+            <option value="All">All plans</option>
+            <option value="Annual Pro">Annual Pro</option>
+            <option value="Monthly Pro">Monthly Pro</option>
+          </select>
+          <div style="margin-left:auto"><button class="btn" id="exportCsv">📥 Export CSV</button></div>
+        </div>
+
+        <div class="table">
+          <div class="table-head payments-grid"><div>User</div><div>Plan</div><div>Amount</div><div>Status</div><div>Method</div><div>Date</div></div>
+          <div id="paymentRows"></div>
+          <div class="footer"><span id="rangeText"></span><div class="pages" id="pages"></div></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const rowsEl = document.getElementById("paymentRows");
+        const pagesEl = document.getElementById("pages");
+        
+        let payments = [];
+        const state = { page: 1, perPage: 10, query: "", status: "All", plan: "All" };
+
+        const statusMap = {
+            'active': 'Paid',
+            'past_due': 'Pending',
+            'canceled': 'Failed'
+        };
+
+        const statusClassMap = {
+            'active': 'badge',
+            'past_due': 'badge processing',
+            'canceled': 'badge draft'
+        };
+
+        async function loadPayments() {
+            try {
+                const res = await apiFetch('/payments/admin/');
+                if (res.ok) {
+                    const responseData = await res.json();
+                    const data = responseData.data || responseData;
+                    payments = data.results || (Array.isArray(data) ? data : []);
+                    if (!payments || payments.length === 0) {
+                        await loadFromUsers();
+                    } else {
+                        renderStats();
+                        render();
+                    }
+                } else {
+                    await loadFromUsers();
+                }
+            } catch (e) {
+                await loadFromUsers();
+            }
+        }
+
+        async function loadFromUsers() {
+            try {
+                const res = await apiFetch('/core/admin/users/');
+                if (res.ok) {
+                    const responseData = await res.json();
+                    const users = responseData.data || responseData;
+                    payments = [];
+                    users.forEach(u => {
+                        const prof = u.profile || {};
+                        const st = prof.subscription_type || (u.is_pro ? 'Monthly $5' : 'Free');
+                        if (st !== 'Free' || prof.has_one_time_purchase_36) {
+                            let price = st === 'Yearly $49' ? 49 : (st === 'Monthly $5' ? 5 : (prof.has_one_time_purchase_36 ? 36 : 0));
+                            payments.push({
+                                user: u.id,
+                                user_email: u.email,
+                                plan_name: st !== 'Free' ? st : '$36 One-Time Pass',
+                                plan_price: price,
+                                status: 'active',
+                                created_at: u.date_joined
+                            });
+                        }
+                    });
+                    renderStats();
+                    render();
+                }
+            } catch(err) {
+                console.error(err);
+            }
+        }
+
+        function filteredPayments() {
+            const q = state.query.toLowerCase();
+            return payments.filter(row => {
+                const userEmail = row.user_email || '';
+                const planName = row.plan_name || '';
+                const displayStatus = statusMap[row.status] || row.status || '';
+                
+                const matchQuery = [userEmail, planName, displayStatus].join(" ").toLowerCase().includes(q);
+                const matchStatus = state.status === "All" || displayStatus === state.status;
+                const matchPlan = state.plan === "All" || planName === state.plan;
+                
+                return matchQuery && matchStatus && matchPlan;
+            });
+        }
+
+        function money(value) {
+            return "$" + Number(value).toFixed(2);
+        }
+
+        function renderStats() {
+            const paid = payments.filter(row => row.status === "active");
+            const revenue = paid.reduce((sum, row) => sum + Number(row.plan_price || 0), 0);
+            
+            document.getElementById("paidRevenue").textContent = money(revenue);
+            document.getElementById("paidCount").textContent = `${paid.length} paid rows`;
+            document.getElementById("annualCount").textContent = payments.filter(row => (row.plan_name || '').includes("Annual")).length;
+            document.getElementById("failedCount").textContent = payments.filter(row => row.status === "canceled").length;
+            document.getElementById("pendingCount").textContent = payments.filter(row => row.status === "past_due").length;
+        }
+
+        function render() {
+            const rows = filteredPayments();
+            const totalPages = Math.max(1, Math.ceil(rows.length / state.perPage));
+            if (state.page > totalPages) state.page = totalPages;
+            
+            const start = (state.page - 1) * state.perPage;
+            const pageRows = rows.slice(start, start + state.perPage);
+            
+            if (rowsEl) {
+                rowsEl.innerHTML = pageRows.length ? pageRows.map(row => {
+                    const date = new Date(row.created_at).toLocaleDateString();
+                    const displayStatus = statusMap[row.status] || row.status;
+                    const statusClass = statusClassMap[row.status] || 'badge';
+                    const email = row.user_email || `User #${row.user}`;
+                    
+                    return `
+                        <div class="table-row payments-grid">
+                            <div><strong>${email.split('@')[0]}</strong><div class="row-meta">${email}</div></div>
+                            <div>${row.plan_name}</div>
+                            <div class="metric">${money(row.plan_price)}</div>
+                            <span class="${statusClass}">${displayStatus}</span>
+                            <div>Stripe</div>
+                            <div>${date}</div>
+                        </div>
+                    `;
+                }).join("") : `<div class="empty">No payments found.</div>`;
+            }
+
+            document.getElementById("rangeText").textContent = rows.length ? `Showing ${start + 1}-${Math.min(start + state.perPage, rows.length)} of ${rows.length}` : "Showing 0";
+            
+            if (pagesEl) {
+                pagesEl.innerHTML = totalPages > 1 ? Array.from({ length: totalPages }, (_, i) => 
+                    `<button class="page ${state.page === i + 1 ? "active" : ""}" data-page="${i + 1}">${i + 1}</button>`
+                ).join("") : "";
+
+                document.querySelectorAll("[data-page]").forEach(b => b.onclick = () => {
+                    state.page = Number(b.dataset.page);
+                    render();
+                });
+            }
+        }
+
+        function exportCsv() {
+            const csv = ["User Email,Plan,Amount,Status,Method,Date", 
+                ...payments.map(r => `"${r.user_email}","${r.plan_name}","${r.plan_price}","${statusMap[r.status] || r.status}","Stripe","${new Date(r.created_at).toLocaleDateString()}"`)
+            ].join("\n");
+            
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"}));
+            a.download = "payments-ledger.csv";
+            a.click();
+            toast("CSV exported");
+        }
+
+        document.getElementById("exportCsv").onclick = exportCsv;
+        document.getElementById("topExport").onclick = exportCsv;
+
+        document.getElementById("search").oninput = () => {
+            state.query = document.getElementById("search").value;
+            state.page = 1;
+            render();
+        };
+
+        document.getElementById("statusFilter").onchange = () => {
+            state.status = document.getElementById("statusFilter").value;
+            state.page = 1;
+            render();
+        };
+
+        document.getElementById("planFilter").onchange = () => {
+            state.plan = document.getElementById("planFilter").value;
+            state.page = 1;
+            render();
+        };
+
+        loadPayments();
+    });
+  </script>
+
+  <script src="{% static 'js/admin_core.js' %}"></script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EZLain Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="toast" id="toast"></div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="side-logo"><div class="logo-mark">EZ</div><div class="side-copy"><div class="side-brand">EZLain</div><div class="side-sub">Admin</div></div></div>
+      <nav class="nav">
+        <div class="nav-title">Overview</div>
+        <a class="nav-item active" href="./dashboard.html">▦ <span>Dashboard</span></a>
+        <a class="nav-item" href="./analytics.html">▥ <span>Analytics</span></a>
+        <div class="nav-title">Content</div>
+        <a class="nav-item" href="./audio-upload.html">♫ <span>Audio Library</span></a>
+        <div class="nav-title">Users</div>
+        <a class="nav-item" href="./payments.html">💳 <span>Payments</span></a>
+        <a class="nav-item" href="./notifications.html">🔔 <span>Notifications</span></a>
+        <div class="nav-title">System</div>
+        <a class="nav-item" href="./settings.html">⚙ <span>Settings</span></a>
+      </nav>
+      <div class="side-footer"><div class="avatar">RA</div><div><strong>Rabbi Admin</strong><br><span style="color:rgba(255,255,255,.45)">Super Admin</span></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-btn" id="menuBtn">☰</button>
+        <div class="page-title">Dashboard</div>
+        <input class="search" id="topSearch" placeholder="Search anything...">
+        <button class="icon-btn" id="notifBtn">🔔</button>
+        <a class="btn primary" href="./audio-upload.html">+ Upload Audio</a>
+      </header>
+      <section class="content">
+        <div class="stats" id="stats"></div>
+        <div class="grid">
+          <div class="panel">
+            <div class="panel-head"><span>Recent Audio Uploads</span><a class="panel-link" href="./audio-upload.html">View all →</a></div>
+            <div id="recentAudio"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">Recent Activity</div>
+            <div id="activity"></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-head">Listening Trend</div>
+          <div class="chart" id="listeningBars"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script>
+    const audio = [
+      { title: "Bereishit - Aliya 1", category: "Chumash", duration: "4:32", size: "8.2 MB", aliya: "Aliya 1", status: "Published", letter: "B" },
+      { title: "Bereishit - Aliya 2", category: "Chumash", duration: "3:58", size: "7.4 MB", aliya: "Aliya 2", status: "Published", letter: "B" },
+      { title: "Noach - Aliya 3", category: "Mon-Thu", duration: "3:18", size: "6.1 MB", aliya: "Aliya 3", status: "Published", letter: "N" },
+      { title: "Lech Lecha - Full Haftorah", category: "Haftoros", duration: "12:44", size: "23.5 MB", aliya: "Full", status: "Processing", letter: "L" },
+      { title: "Vayeira - Aliya 5", category: "Chumash", duration: "5:07", size: "9.4 MB", aliya: "Aliya 5", status: "Draft", letter: "V" }
+    ];
+    const activities = [
+      ["green", "New subscriber:", "Yosef M. unlocked Pro access", "2 min ago"],
+      ["amber", "New annual subscriber:", "Eli K. - $49 collected", "18 min ago"],
+      ["blue", "Upload complete:", "Bereishit Aliya 1 published", "2h ago"],
+      ["gray", "Feedback received:", "Audio quality excellent", "4h ago"]
+    ];
+    const stats = [
+      ["Total Users", "2,847", "↑ 12% this month", ""],
+      ["Pro Subscribers", "1,203", "↑ 8% this month", "amber"],
+      ["Audio Files", "384", "↑ 14 new", "blue"],
+      ["Revenue (Month)", "$6,015", "↑ 5% vs last", "violet"]
+    ];
+    const toast = (msg) => {
+      const el = document.getElementById("toast");
+      el.textContent = msg; el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 1800);
+    };
+    document.getElementById("notifBtn").onclick = () => toast("3 uploads are awaiting review");
+    document.getElementById("stats").innerHTML = stats.map(s => `<div class="stat ${s[3]}"><div class="stat-label">${s[0]}</div><div class="stat-value">${s[1]}</div><div class="stat-delta">${s[2]}</div></div>`).join("");
+    document.getElementById("recentAudio").innerHTML = audio.map(a => `<div class="row"><div class="thumb">${a.letter}</div><div class="row-main"><div class="row-title">${a.title}</div><div class="row-meta">${a.category} · ${a.duration} · ${a.size} · ${a.aliya}</div></div><span class="badge ${a.status.toLowerCase()}">${a.status}</span></div>`).join("");
+    document.getElementById("activity").innerHTML = activities.map(a => `<div class="row"><span class="dot ${a[0]}"></span><div><strong>${a[1]}</strong> ${a[2]}<div class="row-meta">${a[3]}</div></div></div>`).join("");
+    document.getElementById("listeningBars").innerHTML = [45,60,55,72,82,40,66].map(h => `<div class="bar" style="height:${h}%"></div>`).join("");
+  </script>
+</body>
+</html>

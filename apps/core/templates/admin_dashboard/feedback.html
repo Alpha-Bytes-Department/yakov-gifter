@@ -1,0 +1,265 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EZLain – User Feedback</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'css/admin_dashboard.css' %}">
+  <script src="{% static 'js/admin_core.js' %}"></script>
+  <style>
+    .feedback-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+    .fb-card {
+      background: var(--a-bg);
+      border: 1px solid var(--a-border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: box-shadow .2s, border-color .2s;
+      cursor: pointer;
+    }
+    .fb-card:hover { box-shadow: 0 4px 20px rgba(0,0,0,.12); border-color: var(--a-primary); }
+    .fb-head { display: flex; align-items: center; gap: 10px; }
+    .fb-avatar {
+      width: 38px; height: 38px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--a-primary), #1a7a5e);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 14px; color: #fff; flex-shrink: 0;
+    }
+    .fb-meta { flex: 1; min-width: 0; }
+    .fb-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fb-email { font-size: 11px; color: var(--a-text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fb-time { font-size: 11px; color: var(--a-text3); white-space: nowrap; }
+    .fb-message {
+      font-size: 13.5px;
+      color: var(--a-text2);
+      line-height: 1.55;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .fb-footer { display: flex; justify-content: flex-end; }
+    .fb-btn { font-size: 12px; color: var(--a-primary); background: none; border: none; cursor: pointer; font-weight: 600; padding: 0; }
+    .fb-btn:hover { text-decoration: underline; }
+
+    /* Modal */
+    .fb-modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.45); z-index: 1000;
+      align-items: center; justify-content: center;
+    }
+    .fb-modal-overlay.open { display: flex; }
+    .fb-modal {
+      background: var(--a-bg);
+      border-radius: 14px;
+      padding: 28px 30px;
+      max-width: 540px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,.3);
+      position: relative;
+    }
+    .fb-modal-close {
+      position: absolute; top: 16px; right: 18px;
+      background: none; border: none; font-size: 22px;
+      cursor: pointer; color: var(--a-text3);
+      line-height: 1;
+    }
+    .fb-modal-close:hover { color: var(--a-text); }
+    .fb-modal-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .fb-modal-avatar {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--a-primary), #1a7a5e);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 18px; color: #fff;
+    }
+    .fb-modal-name { font-size: 16px; font-weight: 700; }
+    .fb-modal-email { font-size: 12px; color: var(--a-text3); }
+    .fb-modal-date { font-size: 12px; color: var(--a-text3); margin-bottom: 14px; }
+    .fb-modal-body {
+      font-size: 14.5px; line-height: 1.7;
+      color: var(--a-text2);
+      background: var(--a-surf);
+      border-radius: 8px;
+      padding: 16px 18px;
+      white-space: pre-wrap;
+    }
+
+    .empty-state {
+      text-align: center; padding: 60px 20px;
+      color: var(--a-text3);
+    }
+    .empty-state svg { margin-bottom: 14px; opacity: .35; }
+    .empty-state p { font-size: 15px; }
+
+    .stat-row { display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
+    .stat-pill {
+      background: var(--a-bg);
+      border: 1px solid var(--a-border);
+      border-radius: 30px;
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .stat-pill span { color: var(--a-text3); font-weight: 400; }
+  </style>
+</head>
+<body>
+  <div class="toast" id="toast"></div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="side-logo"><div class="logo-mark">EZ</div><div class="side-copy"><div class="side-brand">EZLain</div><div class="side-sub">Admin</div></div></div>
+      {% include 'admin_dashboard/sidebar.html' with active_page='feedback' %}
+      <div class="side-footer"><div class="avatar">RA</div><div><strong>Rabbi Admin</strong><br><span style="color:rgba(255,255,255,.45)">Super Admin</span></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-btn" id="toggleSidebar" aria-label="Toggle sidebar">☰</button>
+        <div class="page-title">User Feedback</div>
+      </header>
+      <section class="content">
+        <div class="toolbar stacked" style="margin-bottom:20px;">
+          <input class="toolbar-search" id="searchInput" placeholder="Search by name, email or message…" style="max-width:400px;">
+        </div>
+
+        <div class="stat-row">
+          <div class="stat-pill">💬 Total: <span id="totalCount">…</span></div>
+          <div class="stat-pill">📅 This week: <span id="weekCount">…</span></div>
+        </div>
+
+        <div class="feedback-grid" id="feedbackGrid"></div>
+        <div class="empty-state" id="emptyState" style="display:none;">
+          <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+          <p>No feedback found.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal -->
+  <div class="fb-modal-overlay" id="fbModal">
+    <div class="fb-modal">
+      <button class="fb-modal-close" id="fbModalClose">×</button>
+      <div class="fb-modal-head">
+        <div class="fb-modal-avatar" id="mAvatar"></div>
+        <div>
+          <div class="fb-modal-name" id="mName"></div>
+          <div class="fb-modal-email" id="mEmail"></div>
+        </div>
+      </div>
+      <div class="fb-modal-date" id="mDate"></div>
+      <div class="fb-modal-body" id="mBody"></div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      let allItems = [];
+
+      function initials(name) {
+        return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+      }
+
+      function timeAgo(iso) {
+        const diff = (Date.now() - new Date(iso)) / 1000;
+        if (diff < 60) return 'Just now';
+        if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+        if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+        if (diff < 604800) return `${Math.floor(diff/86400)}d ago`;
+        return new Date(iso).toLocaleDateString('en-GB', {day:'numeric', month:'short', year:'numeric'});
+      }
+
+      function isThisWeek(iso) {
+        return (Date.now() - new Date(iso)) < 7 * 86400 * 1000;
+      }
+
+      function renderCard(item) {
+        const card = document.createElement('div');
+        card.className = 'fb-card';
+        card.innerHTML = `
+          <div class="fb-head">
+            <div class="fb-avatar">${initials(item.name || item.email)}</div>
+            <div class="fb-meta">
+              <div class="fb-name">${item.name || '—'}</div>
+              <div class="fb-email">${item.email}</div>
+            </div>
+            <div class="fb-time">${timeAgo(item.created_at)}</div>
+          </div>
+          <div class="fb-message">${item.message}</div>
+          <div class="fb-footer">
+            <button class="fb-btn">Read full message →</button>
+          </div>
+        `;
+        card.addEventListener('click', () => openModal(item));
+        return card;
+      }
+
+      function render(items) {
+        const grid = document.getElementById('feedbackGrid');
+        const empty = document.getElementById('emptyState');
+        grid.innerHTML = '';
+        if (!items.length) { empty.style.display = 'block'; return; }
+        empty.style.display = 'none';
+        items.forEach(item => grid.appendChild(renderCard(item)));
+      }
+
+      function openModal(item) {
+        document.getElementById('mAvatar').textContent = initials(item.name || item.email);
+        document.getElementById('mName').textContent = item.name || '—';
+        document.getElementById('mEmail').textContent = item.email;
+        document.getElementById('mDate').textContent = new Date(item.created_at).toLocaleString('en-GB', {
+          weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+        document.getElementById('mBody').textContent = item.message;
+        document.getElementById('fbModal').classList.add('open');
+      }
+
+      document.getElementById('fbModalClose').addEventListener('click', () => {
+        document.getElementById('fbModal').classList.remove('open');
+      });
+      document.getElementById('fbModal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('fbModal')) {
+          document.getElementById('fbModal').classList.remove('open');
+        }
+      });
+
+      document.getElementById('searchInput').addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        render(allItems.filter(i =>
+          i.name.toLowerCase().includes(q) ||
+          i.email.toLowerCase().includes(q) ||
+          i.message.toLowerCase().includes(q)
+        ));
+      });
+
+      // Load data
+      try {
+        const res = await apiFetch('/core/admin/settings/feedback_list/');
+        if (res.ok) {
+          const json = await res.json();
+          allItems = json.results || json.data?.results || [];
+          const count = json.count || allItems.length;
+          document.getElementById('totalCount').textContent = count;
+          document.getElementById('weekCount').textContent = allItems.filter(i => isThisWeek(i.created_at)).length;
+          render(allItems);
+        }
+      } catch (e) {
+        document.getElementById('emptyState').style.display = 'block';
+        document.getElementById('emptyState').querySelector('p').textContent = 'Failed to load feedback.';
+      }
+
+      // Sidebar toggle
+      const toggle = document.getElementById('toggleSidebar');
+      if (toggle) toggle.addEventListener('click', () => document.querySelector('.shell').classList.toggle('sidebar-open'));
+    });
+  </script>
+</body>
+</html>

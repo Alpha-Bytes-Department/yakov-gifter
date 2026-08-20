@@ -1,0 +1,344 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EZLain Users & Subscriptions</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <link rel="stylesheet" href="{% static 'css/admin_dashboard.css' %}">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="side-logo"><div class="logo-mark">EZ</div><div class="side-copy"><div class="side-brand">EZLain</div><div class="side-sub">Admin</div></div></div>
+      {% include 'admin_dashboard/sidebar.html' with active_page='users' %}
+      <div class="side-footer"><div class="avatar">RA</div><div><strong>Rabbi Admin</strong><br><span style="color:rgba(255,255,255,.45)">Super Admin</span></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-btn" id="toggleSidebar" aria-label="Toggle sidebar">☰</button>
+        <div class="page-title">Users & Subscriptions</div>
+      </header>
+      <section class="content">
+        <div class="single-column">
+          <div class="toolbar">
+            <input class="toolbar-search" id="search" style="flex:1" placeholder="Search by name, email, or RC ID...">
+            <select class="chip" id="proFilter">
+                <option value="All">All Users</option>
+                <option value="Pro">Pro Subscribers</option>
+                <option value="Free">Free Users</option>
+            </select>
+            <select class="chip" id="statusFilter">
+                <option value="All">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="trialing">Trialing</option>
+                <option value="expired">Expired</option>
+            </select>
+            <select class="chip" id="accountFilter">
+                <option value="All">All Accounts</option>
+                <option value="Main">Main Accounts</option>
+                <option value="Sub">Sub-accounts</option>
+            </select>
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <h1 style="font-size:18px;margin:0">Registered Users <span id="countText" style="color:var(--text3);font-weight:400"></span></h1>
+          </div>
+          <div class="table">
+            <div class="table-head" style="display:grid;grid-template-columns:32px 1.5fr 1.5fr 1.2fr 1fr 1.2fr 1fr 100px;gap:12px;align-items:center;">
+                <div></div>
+                <div>User</div>
+                <div>Email</div>
+                <div>Subscription</div>
+                <div>Bar Mitzvah</div>
+                <div>Referrals</div>
+                <div>Joined</div>
+                <div>Actions</div>
+            </div>
+            <div id="userRows"></div>
+            <div class="footer"><span id="rangeText"></span><div class="pages" id="pages"></div></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  
+  <div class="modal-overlay" id="editModal">
+    <form class="modal" id="editForm">
+      <div class="modal-head">
+          <span id="modalTitle">Edit User & Subscription</span>
+          <button class="small-btn" type="button" id="closeModal">❌</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editUserId">
+        <div class="form-grid">
+          <label class="field"><span class="label">First Name</span><input class="input" id="firstNameInput"></label>
+          <label class="field"><span class="label">Last Name</span><input class="input" id="lastNameInput"></label>
+          <label class="field full"><span class="label">Email Address (Read-Only)</span><input class="input" id="emailInput" readonly style="background:var(--bg-color);color:var(--text2)"></label>
+          
+          <label class="field"><span class="label">Subscription Type</span>
+            <select class="select" id="subscriptionTypeInput">
+              <option value="Free">Free</option>
+              <option value="Monthly $5">Monthly $5</option>
+              <option value="Yearly $49">Yearly $49</option>
+            </select>
+          </label>
+          <label class="field"><span class="label">Referral Count</span>
+            <input class="input" type="number" id="referralCountInput" min="0">
+          </label>
+          
+          <label class="field"><span class="label">Date of Birth</span>
+            <input class="input" type="date" id="dobInput">
+          </label>
+          <label class="field" style="display:flex;align-items:center;gap:10px;margin-top:20px;">
+              <input type="checkbox" id="hasOneTimePassInput" style="width:18px;height:18px">
+              <span style="font-weight:600;font-size:13px">$36 One-Time Pass</span>
+          </label>
+          
+          <label class="field full" style="display:flex;align-items:center;gap:10px;">
+              <input type="checkbox" id="isProInput" style="width:18px;height:18px">
+              <span style="font-weight:600;font-size:13px">Pro Access Override</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" type="button" id="cancelEdit">Cancel</button>
+        <button class="btn primary" type="submit">💾 Save Changes</button>
+      </div>
+    </form>
+  </div>
+  
+  <div class="toast" id="toast"></div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const rowsEl = document.getElementById("userRows");
+        const pagesEl = document.getElementById("pages");
+        
+        let usersList = [];
+        const state = { page: 1, perPage: 15, query: "", proFilter: "All", statusFilter: "All", accountFilter: "All" };
+
+        async function loadUsers() {
+            try {
+                const res = await apiFetch('/core/admin/users/');
+                if (res.ok) {
+                    const responseData = await res.json();
+                    usersList = responseData.data || responseData;
+                    render();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function filteredUsers() {
+            const q = state.query.toLowerCase();
+            return usersList.filter(item => {
+                const profile = item.profile || {};
+                const matchQuery = [item.full_name, item.email, profile.subscription_type].join(" ").toLowerCase().includes(q);
+                
+                let matchPro = true;
+                if (state.proFilter === "Pro") matchPro = item.is_pro === true || (profile.subscription_type && profile.subscription_type !== 'Free');
+                if (state.proFilter === "Free") matchPro = !item.is_pro && (profile.subscription_type === 'Free' || !profile.subscription_type);
+
+                let matchStatus = true;
+                if (state.statusFilter !== "All") {
+                    matchStatus = (profile.subscription_type || "").toLowerCase().includes(state.statusFilter.toLowerCase());
+                }
+
+                let matchAccount = true;
+                if (state.accountFilter === "Main") {
+                    matchAccount = !item.children || item.children.length === 0;
+                } else if (state.accountFilter === "Sub") {
+                    matchAccount = item.children && item.children.length > 0;
+                }
+
+                return matchQuery && matchPro && matchStatus && matchAccount;
+            });
+        }
+
+        function render() {
+            const rows = filteredUsers();
+            const totalPages = Math.max(1, Math.ceil(rows.length / state.perPage));
+            if (state.page > totalPages) state.page = totalPages;
+            
+            const start = (state.page - 1) * state.perPage;
+            const pageRows = rows.slice(start, start + state.perPage);
+            
+            if (rowsEl) {
+                rowsEl.innerHTML = pageRows.length ? pageRows.map(item => {
+                    const dateJoined = new Date(item.date_joined).toLocaleDateString();
+                    const profile = item.profile || {};
+                    const subType = profile.subscription_type || (item.is_pro ? 'Monthly $5' : 'Free');
+                    const hasPass = profile.has_one_time_purchase_36;
+                    const weeksBm = profile.weeks_until_bar_mitzvah != null ? `${profile.weeks_until_bar_mitzvah} wks` : 'N/A';
+                    const refCount = profile.referral_count || 0;
+                    
+                    const subBadgeStyle = subType !== 'Free' 
+                        ? 'background:#e6f4ea;color:#137333;font-weight:700;' 
+                        : 'background:#f1f3f4;color:#5f6368;';
+
+                    return `
+                        <div class="table-row" style="display:grid;grid-template-columns:32px 1.5fr 1.5fr 1.2fr 1fr 1.2fr 1fr 100px;gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--a-border);background:white;">
+                            <div class="thumb" style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background: ${item.is_pro ? 'var(--a-amber-bg)' : 'var(--a-surf)'}; margin:0">
+                                <span style="color: ${item.is_pro ? 'var(--a-amber)' : 'var(--a-text3)'};font-size:14px">👤</span>
+                            </div>
+                            <div style="font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                                ${item.full_name || 'Anonymous User'}
+                            </div>
+                            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                                <a href="mailto:${item.email}" style="color:var(--primary);text-decoration:none">${item.email}</a>
+                            </div>
+                            <div>
+                                <span class="badge" style="${subBadgeStyle}">${subType}</span>
+                                ${hasPass ? `<span class="badge" style="background:#feefc3;color:#b06000;margin-left:4px;">$36 PASS</span>` : ''}
+                            </div>
+                            <div style="font-size:12px;color:var(--text2);">${weeksBm}</div>
+                            <div style="font-size:12px;">
+                                <strong>${refCount}</strong> refs
+                                ${refCount >= 3 ? `<button type="button" class="small-btn apply-reward-btn" data-id="${item.id}" title="Grant 1 Mo Free Reward" style="margin-left:4px;background:#e6f4ea;color:#137333;">🎁 Reward</button>` : ''}
+                            </div>
+                            <div class="row-meta" style="margin:0">${dateJoined}</div>
+                            <div class="actions">
+                                <button type="button" class="small-btn edit-user-btn" data-id="${item.id}" title="Edit User">✏️</button>
+                            </div>
+                        </div>
+                    `;
+                }).join("") : `<div class="empty">No users found matching filters.</div>`;
+            }
+
+            document.getElementById("countText").textContent = `${rows.length} total`;
+            document.getElementById("rangeText").textContent = rows.length ? `Showing ${start + 1}-${Math.min(start + state.perPage, rows.length)} of ${rows.length}` : "Showing 0";
+            
+            if (pagesEl) {
+                pagesEl.innerHTML = totalPages > 1 ? Array.from({ length: totalPages }, (_, i) => 
+                    `<button class="page ${state.page === i + 1 ? "active" : ""}" data-page="${i + 1}">${i + 1}</button>`
+                ).join("") : "";
+
+                document.querySelectorAll("[data-page]").forEach(b => b.onclick = () => {
+                    state.page = Number(b.dataset.page);
+                    render();
+                });
+            }
+        }
+
+        document.getElementById("search").oninput = () => {
+            state.query = document.getElementById("search").value;
+            state.page = 1;
+            render();
+        };
+
+        document.getElementById("proFilter").onchange = () => {
+            state.proFilter = document.getElementById("proFilter").value;
+            state.page = 1;
+            render();
+        };
+
+        document.getElementById("statusFilter").onchange = () => {
+            state.statusFilter = document.getElementById("statusFilter").value;
+            state.page = 1;
+            render();
+        };
+
+        document.getElementById("accountFilter").onchange = () => {
+            state.accountFilter = document.getElementById("accountFilter").value;
+            state.page = 1;
+            render();
+        };
+
+        // Modal & Action Logic
+        const modal = document.getElementById("editModal");
+        
+        document.addEventListener('click', async (e) => {
+            const rewardBtn = e.target.closest('.apply-reward-btn');
+            if (rewardBtn) {
+                const userId = rewardBtn.dataset.id;
+                try {
+                    const res = await apiFetch(`/core/admin/users/${userId}/apply_reward/`, { method: 'POST' });
+                    const resData = await res.json();
+                    if (res.ok) {
+                        toast(resData.message || "Reward applied!");
+                        loadUsers();
+                    } else {
+                        toast("Failed: " + (resData.message || "Could not apply reward"));
+                    }
+                } catch (err) {
+                    toast("Network error");
+                }
+                return;
+            }
+
+            const editBtn = e.target.closest('.edit-user-btn');
+            if (editBtn) {
+                const userId = parseInt(editBtn.dataset.id);
+                const user = usersList.find(u => u.id === userId);
+                if (user) {
+                    const profile = user.profile || {};
+                    document.getElementById('editUserId').value = user.id;
+                    
+                    let first = '', last = '';
+                    if (user.full_name) {
+                        const parts = user.full_name.split(' ');
+                        last = parts.length > 1 ? parts.pop() : '';
+                        first = parts.join(' ');
+                    }
+                    
+                    document.getElementById('firstNameInput').value = first;
+                    document.getElementById('lastNameInput').value = last;
+                    document.getElementById('emailInput').value = user.email;
+                    document.getElementById('isProInput').checked = user.is_pro;
+                    document.getElementById('subscriptionTypeInput').value = profile.subscription_type || 'Free';
+                    document.getElementById('hasOneTimePassInput').checked = !!profile.has_one_time_purchase_36;
+                    document.getElementById('dobInput').value = profile.date_of_birth || '';
+                    document.getElementById('referralCountInput').value = profile.referral_count || 0;
+                    
+                    modal.classList.add('open');
+                }
+            }
+        });
+        
+        document.getElementById('closeModal').onclick = () => modal.classList.remove('open');
+        document.getElementById('cancelEdit').onclick = () => modal.classList.remove('open');
+        
+        document.getElementById('editForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('editUserId').value;
+            const payload = {
+                first_name: document.getElementById('firstNameInput').value,
+                last_name: document.getElementById('lastNameInput').value,
+                is_pro: document.getElementById('isProInput').checked,
+                subscription_type: document.getElementById('subscriptionTypeInput').value,
+                has_one_time_purchase_36: document.getElementById('hasOneTimePassInput').checked,
+                date_of_birth: document.getElementById('dobInput').value,
+                referral_count: document.getElementById('referralCountInput').value
+            };
+            
+            try {
+                const res = await apiFetch(`/core/admin/users/${id}/`, {
+                    method: 'PATCH',
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    toast('User & profile updated successfully!');
+                    modal.classList.remove('open');
+                    loadUsers();
+                } else {
+                    toast('Error updating user profile');
+                }
+            } catch (err) {
+                console.error(err);
+                toast('Network error');
+            }
+        };
+
+        loadUsers();
+    });
+  </script>
+
+  <script src="{% static 'js/admin_core.js' %}"></script>
+</body>
+</html>

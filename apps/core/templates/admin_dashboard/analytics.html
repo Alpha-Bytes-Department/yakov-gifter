@@ -1,0 +1,158 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EZLain Analytics</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <link rel="stylesheet" href="{% static 'css/admin_dashboard.css' %}">
+  <script src="{% static 'js/admin_core.js' %}"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="side-logo"><div class="logo-mark">EZ</div><div class="side-copy"><div class="side-brand">EZLain</div><div class="side-sub">Admin</div></div></div>
+      {% include 'admin_dashboard/sidebar.html' with active_page='analytics' %}
+      <div class="side-footer"><div class="avatar">RA</div><div><strong>Rabbi Admin</strong><br><span style="color:rgba(255,255,255,.45)">Super Admin</span></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-btn" id="toggleSidebar" aria-label="Toggle sidebar">☰</button>
+        <div class="page-title">Analytics</div>
+        <button class="btn primary" id="refreshCharts">🔄 Refresh Data</button>
+      </header>
+      <section class="content">
+        <div class="stats">
+          <div class="stat"><div class="stat-label">Revenue</div><div class="stat-value" id="revenueTotal">$0</div><div class="stat-delta">last 6 months</div></div>
+          <div class="stat amber"><div class="stat-label">New Users</div><div class="stat-value" id="usersTotal">0</div><div class="stat-delta">last 6 months</div></div>
+          <div class="stat blue"><div class="stat-label">Audio Plays</div><div class="stat-value" id="playsTotal">0</div><div class="stat-delta">tracked sessions</div></div>
+          <div class="stat violet"><div class="stat-label">Paid Ratio</div><div class="stat-value" id="paidRatio">0%</div><div class="stat-delta">payment success</div></div>
+        </div>
+        <div class="grid">
+          <div class="panel"><div class="panel-head">Revenue Trend</div><div class="chart-card"><canvas id="revenueChart"></canvas></div></div>
+          <div class="panel"><div class="panel-head">User Growth</div><div class="chart-card"><canvas id="userChart"></canvas></div></div>
+        </div>
+        <div class="grid">
+          <div class="panel"><div class="panel-head">Audio Category Distribution</div><div class="chart-card"><canvas id="audioChart"></canvas></div></div>
+          <div class="panel"><div class="panel-head">Payment Status</div><div class="chart-card"><canvas id="paymentChart"></canvas></div></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+    let data = {
+      revenue: [0, 0, 0, 0, 0, 0],
+      users: [0, 0, 0, 0, 0, 0],
+      audio: {},
+      payments: { Paid: 0, Pending: 0, Failed: 0 },
+      plays: [0, 0, 0, 0, 0, 0]
+    };
+    const colors = {
+      primary: "#1B4A34",
+      primaryLt: "#3A8260",
+      amber: "#B8741A",
+      amberLt: "#CF8E28",
+      text2: "#5A5448",
+      border: "#DDD8CC"
+    };
+    const charts = [];
+
+    function toast(message) {
+      const el = document.getElementById("toast");
+      el.textContent = message;
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 1800);
+    }
+
+    function chartOptions() {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: colors.text2, font: { family: "Plus Jakarta Sans" } } } },
+        scales: {
+          x: { grid: { color: "rgba(221,216,204,.55)" }, ticks: { color: colors.text2 } },
+          y: { grid: { color: "rgba(221,216,204,.65)" }, ticks: { color: colors.text2 } }
+        }
+      };
+    }
+
+    function drawCharts() {
+      charts.forEach((chart) => chart.destroy());
+      charts.length = 0;
+      charts.push(new Chart(document.getElementById("revenueChart"), {
+        type: "line",
+        data: { labels: months, datasets: [{ label: "Revenue", data: data.revenue, borderColor: colors.primary, backgroundColor: "rgba(27,74,52,.12)", fill: true, tension: .35 }] },
+        options: chartOptions()
+      }));
+      charts.push(new Chart(document.getElementById("userChart"), {
+        type: "bar",
+        data: { labels: months, datasets: [{ label: "New Users", data: data.users, backgroundColor: colors.amber }] },
+        options: chartOptions()
+      }));
+      charts.push(new Chart(document.getElementById("audioChart"), {
+        type: "doughnut",
+        data: { labels: Object.keys(data.audio), datasets: [{ data: Object.values(data.audio), backgroundColor: [colors.primary, colors.amber, colors.primaryLt, colors.amberLt, "#2C6FAC", "#6B4C9A"] }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } }
+      }));
+      charts.push(new Chart(document.getElementById("paymentChart"), {
+        type: "bar",
+        data: { labels: Object.keys(data.payments), datasets: [{ label: "User Accounts", data: Object.values(data.payments), backgroundColor: [colors.primary, colors.amber, colors.primaryLt, "#2C6FAC"] }] },
+        options: chartOptions()
+      }));
+    }
+
+    function renderStats() {
+      const totalPaid = (data.payments['Monthly $5'] || 0) + (data.payments['Yearly $49'] || 0) + (data.payments['$36 One-time Pass'] || 0) + (data.payments.Paid || 0);
+      const totalAll = Object.values(data.payments).reduce((a, b) => a + b, 0);
+      const ratio = totalAll > 0 ? Math.round((totalPaid / totalAll) * 100) : 0;
+
+      document.getElementById("revenueTotal").textContent = "$" + data.revenue.reduce((a, b) => a + b, 0).toLocaleString();
+      document.getElementById("usersTotal").textContent = data.users.reduce((a, b) => a + b, 0).toLocaleString();
+      document.getElementById("playsTotal").textContent = data.plays.reduce((a, b) => a + b, 0).toLocaleString();
+      document.getElementById("paidRatio").textContent = ratio + "%";
+    }
+
+    async function loadAnalytics() {
+      try {
+        const res = await apiFetch('/core/admin/analytics/');
+        if (res.ok) {
+          const responseData = await res.json();
+          const d = responseData.data || responseData;
+          months = d.months || months;
+          data.revenue = d.revenue || data.revenue;
+          data.users = d.users || data.users;
+          data.audio = d.audio || data.audio;
+          data.payments = d.payments || data.payments;
+          data.plays = d.plays || data.plays;
+          
+          renderStats();
+          drawCharts();
+        }
+      } catch (e) {
+        console.error("Failed to load analytics:", e);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById("refreshCharts").addEventListener("click", async () => {
+        await loadAnalytics();
+        toast("Analytics refreshed");
+      });
+
+      if (window.Chart) {
+        loadAnalytics();
+      } else {
+        toast("Chart library could not load");
+      }
+    });
+  </script>
+</body>
+</html>

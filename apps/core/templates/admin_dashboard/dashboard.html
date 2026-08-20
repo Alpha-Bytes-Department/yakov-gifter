@@ -1,0 +1,115 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EZLain Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+  <link rel="stylesheet" href="{% static 'css/admin_dashboard.css' %}">
+</head>
+<body>
+  <div class="toast" id="toast"></div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="side-logo"><div class="logo-mark">EZ</div><div class="side-copy"><div class="side-brand">EZLain</div><div class="side-sub">Admin</div></div></div>
+      {% include 'admin_dashboard/sidebar.html' with active_page='dashboard' %}
+      <div class="side-footer"><div class="avatar">RA</div><div><strong>Rabbi Admin</strong><br><span style="color:rgba(255,255,255,.45)">Super Admin</span></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-btn" id="menuBtn">☰</button>
+        <div class="page-title">Dashboard</div>
+        <input class="search" id="topSearch" placeholder="Search anything...">
+        <button class="icon-btn" id="notifBtn">🔔</button>
+        <a class="btn primary" href="{% url 'admin_dashboard_audio' %}">➕ Upload Audio</a>
+      </header>
+      <section class="content">
+        <div class="stats" id="stats"></div>
+        <div class="grid">
+          <div class="panel">
+            <div class="panel-head"><span>Recent Audio Uploads</span><a class="panel-link" href="{% url 'admin_dashboard_audio' %}">View all →</a></div>
+            <div id="recentAudio"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">Recent Activity</div>
+            <div id="activity"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+        const statsEl = document.getElementById("stats");
+        const recentAudioEl = document.getElementById("recentAudio");
+        const activityEl = document.getElementById("activity");
+        const notifBtn = document.getElementById("notifBtn");
+
+        if (notifBtn) {
+            notifBtn.onclick = () => toast("3 uploads are awaiting review");
+        }
+
+        try {
+            const res = await apiFetch('/core/admin/summary/');
+            if (res.ok) {
+                const responseData = await res.json();
+                const data = responseData.data || responseData;
+                
+                const statsList = [
+                    ["Total Users", data.total_users || 0, "Registered Accounts", ""],
+                    ["Pro & Paid Subs", data.pro_subscribers || 0, "Active Subscriptions", "amber"],
+                    ["Audio Recordings", data.audio_files || 0, "Uploaded & Registered", "blue"],
+                    ["Est. Monthly Revenue", "$" + (data.revenue || 0), "Subscriptions + Passes", "violet"]
+                ];
+                
+                if (statsEl) {
+                    statsEl.innerHTML = statsList.map(s => 
+                        `<div class="stat ${s[3]}"><div class="stat-label">${s[0]}</div><div class="stat-value">${s[1]}</div><div class="stat-delta">${s[2]}</div></div>`
+                    ).join("");
+                }
+                
+                if (recentAudioEl && data.recent_uploads) {
+                    recentAudioEl.innerHTML = data.recent_uploads.length > 0 ? data.recent_uploads.map(a => {
+                        const isAvailable = a.upload_status === 'Available';
+                        const badgeStyle = isAvailable 
+                            ? 'background:#e6f4ea;color:#137333;font-weight:700;' 
+                            : 'background:#fce8e6;color:#c5221f;font-weight:700;';
+                        const categoryInitial = (a.category || 'Audio').charAt(0).toUpperCase();
+                        
+                        return `
+                            <div class="row">
+                                <div class="thumb" style="background:var(--bg-color);color:var(--text2)">${categoryInitial}</div>
+                                <div class="row-main">
+                                    <div class="row-title">
+                                        <strong>${a.title_english || a.title}</strong> 
+                                        ${a.title_hebrew ? `<span style="color:var(--text2);font-family:serif;">(${a.title_hebrew})</span>` : ''} 
+                                        <span class="badge" style="float:right;${badgeStyle}">${a.upload_status || 'NOT UPLOADED'}</span>
+                                    </div>
+                                    <div class="row-meta">${a.category} · ${new Date(a.created_at).toLocaleDateString()}</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join("") : `<div class="empty" style="padding:16px;text-align:center;color:var(--text3)">No audio recordings uploaded</div>`;
+                }
+
+                if (activityEl && data.recent_activity) {
+                    activityEl.innerHTML = data.recent_activity.length > 0 
+                        ? data.recent_activity.map(a => 
+                            `<div class="row"><span class="dot ${a.color}"></span><div><strong>${a.title}</strong> ${a.description}<div class="row-meta">${new Date(a.date).toLocaleString()}</div></div></div>`
+                          ).join("")
+                        : `<div class="empty" style="padding:16px;text-align:center;color:var(--text3)">No recent activity</div>`;
+                }
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    });
+  </script>
+
+  <script src="{% static 'js/admin_core.js' %}"></script>
+</body>
+</html>

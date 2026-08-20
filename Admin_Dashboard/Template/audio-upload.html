@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EZLain Audio Library</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="toast" id="toast"></div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="side-logo"><div class="logo-mark">EZ</div><div class="side-copy"><div class="side-brand">EZLain</div><div class="side-sub">Admin</div></div></div>
+      <nav class="nav">
+        <div class="nav-title">Overview</div><a class="nav-item" href="./dashboard.html">▦ <span>Dashboard</span></a><a class="nav-item" href="./analytics.html">▥ <span>Analytics</span></a>
+        <div class="nav-title">Content</div><a class="nav-item active" href="./audio-upload.html">♫ <span>Audio Library</span></a>
+        <div class="nav-title">Users</div><a class="nav-item" href="./payments.html">💳 <span>Payments</span></a><a class="nav-item" href="./notifications.html">🔔 <span>Notifications</span></a>
+        <div class="nav-title">System</div><a class="nav-item" href="./settings.html">⚙ <span>Settings</span></a>
+      </nav>
+      <div class="side-footer"><div class="avatar">RA</div><div><strong>Rabbi Admin</strong><br><span style="color:rgba(255,255,255,.45)">Super Admin</span></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><button class="menu-btn">☰</button><div class="page-title">Audio Library</div><input class="search" placeholder="Search anything..."><button class="icon-btn" id="notifBtn">🔔</button><button class="btn primary" id="openModalTop">Upload Audio</button></header>
+      <section class="content">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h1 style="font-size:18px;margin:0">Audio Library <span id="fileCount" style="color:var(--a-text3);font-weight:400"></span></h1><button class="btn" id="exportBtn">⇩ Export CSV</button></div>
+        <div class="toolbar stacked">
+          <input class="toolbar-search" id="searchInput" placeholder="Search by parsha, aliya, category...">
+          <div style="display:flex;gap:8px;flex-wrap:wrap" id="categoryChips"></div>
+        </div>
+        <div class="panel hidden" id="playerPanel" style="margin-bottom:14px;padding:10px 14px;display:grid;grid-template-columns:1fr auto 420px;gap:12px;align-items:center">
+          <div><strong id="playerTitle"></strong><div class="row-meta" id="playerMeta"></div></div>
+          <button class="btn primary" id="playPause">▶ Play</button>
+          <audio controls id="audioPlayer" src="../public/sample-15s.mp3" style="width:100%"></audio>
+        </div>
+        <div class="table">
+          <div class="table-head audio-grid"><div></div><div>Title</div><div>Category</div><div>Aliya</div><div>Duration</div><div>Size</div><div>Status</div><div>Actions</div></div>
+          <div id="audioRows"></div>
+          <div class="footer"><span id="pageInfo"></span><div class="pages" id="pages"></div></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="modal-overlay" id="uploadModal">
+    <form class="modal" id="audioForm">
+      <div class="modal-head"><span id="modalTitle">Upload Audio</span><button class="small-btn" type="button" id="closeModal">×</button></div>
+      <div class="modal-body">
+        <div class="drop" id="dropZone" style="cursor:pointer">
+          ⇧ Drop audio file here or click to select<br>
+          <span style="color:var(--a-text3);font-weight:400" id="fileNameDisplay">MP3, WAV, M4A up to 250MB</span>
+          <input type="file" id="fileInput" accept="audio/*" style="display:none">
+        </div>
+        <div class="form-grid">
+          <label class="field"><span class="label">Title</span><input class="input" id="titleInput" required placeholder="e.g. Parshas Bereshit - Aliya 1"></label>
+          <label class="field"><span class="label">Category</span>
+            <select class="select" id="categoryInput">
+              <option value="Chumash (Parshios)">Chumash (Parshios)</option>
+              <option value="Mon-Thurs Lainings">Mon-Thurs Lainings</option>
+              <option value="Yomim Tovim / Special Lainings">Yomim Tovim / Special Lainings</option>
+              <option value="Haftoros">Haftoros</option>
+              <option value="Megillos">Megillos</option>
+              <option value="Nusach HaTefilla">Nusach HaTefilla</option>
+            </select>
+          </label>
+          <label class="field"><span class="label">Parsha</span><input class="input" id="parshaInput" placeholder="e.g. Bereshit"></label>
+          <label class="field"><span class="label">Aliya</span><input class="input" id="aliyaInput" placeholder="e.g. Aliya 1"></label>
+          <label class="field"><span class="label">Duration</span><input class="input" id="durationInput" placeholder="e.g. 4:32"></label>
+          <label class="field"><span class="label">Publish Status</span><select class="select" id="statusInput"><option>Published</option><option>Draft</option><option>Processing</option></select></label>
+          <label class="field full"><span class="label">Size</span><input class="input" id="sizeInput" placeholder="e.g. 8.2 MB"></label>
+        </div>
+      </div>
+      <div class="modal-foot"><button class="btn" type="button" id="cancelModal">Cancel</button><button class="btn" type="button" id="draftBtn">Upload as Draft</button><button class="btn primary" type="submit">Upload & Publish</button></div>
+    </form>
+  </div>
+  <script>
+    const defaultRows = [
+      ["aud-001","Bereishit - Aliya 1","Bereishit","Chumash (Parshios)","Aliya 1","4:32","8.2 MB","Published"],
+      ["aud-002","Bereishit - Aliya 2","Bereishit","Chumash (Parshios)","Aliya 2","3:58","7.4 MB","Published"],
+      ["aud-003","Noach - Aliya 3","Noach","Mon-Thurs Lainings","Aliya 3","3:18","6.1 MB","Published"],
+      ["aud-004","Lech Lecha - Full Haftorah","Lech Lecha","Haftoros","Full","12:44","23.5 MB","Processing"],
+      ["aud-005","Vayeira - Aliya 5","Vayeira","Chumash (Parshios)","Aliya 5","5:07","9.4 MB","Draft"],
+      ["aud-006","Chayei Sara - Aliya 2","Chayei Sara","Chumash (Parshios)","Aliya 2","3:55","7.2 MB","Published"],
+      ["aud-007","Toldot - Aliya 1","Toldot","Mon-Thurs Lainings","Aliya 1","2:49","5.1 MB","Published"],
+      ["aud-008","Vayetzei - Aliya 4","Vayetzei","Chumash (Parshios)","Aliya 4","6:02","10.6 MB","Published"],
+      ["aud-009","Miketz - Megillah Practice","Miketz","Megillos","Practice","8:31","15.8 MB","Draft"],
+      ["aud-010","Pesach - Yom Tov Reading","Pesach","Yomim Tovim / Special Lainings","Full","10:12","18.9 MB","Processing"]
+    ];
+    const saved = localStorage.getItem("ezlain_audio_rows");
+    let audioRows = saved ? JSON.parse(saved) : defaultRows;
+    function saveStorage() { localStorage.setItem("ezlain_audio_rows", JSON.stringify(audioRows)); }
+
+    let page = 1, pageSize = 5, category = "All", editingId = null, currentId = null;
+    const $ = (id) => document.getElementById(id);
+    const toast = (msg) => { const el = $("toast"); el.textContent = msg; el.classList.add("show"); setTimeout(() => el.classList.remove("show"), 1800); };
+    
+    const filtered = () => {
+      const q = $("searchInput").value.toLowerCase();
+      return audioRows.filter(r => {
+        const catStr = (r[3] || "").toLowerCase();
+        const selCat = category.toLowerCase();
+        const catMatch = category === "All" || catStr.includes(selCat) || selCat.includes(catStr) || (selCat.startsWith("mon") && catStr.includes("mon")) || (selCat.startsWith("yom") && catStr.includes("yom")) || (selCat.startsWith("chumash") && catStr.includes("chumash"));
+        return catMatch && r.join(" ").toLowerCase().includes(q);
+      });
+    };
+    function renderChips() {
+      const cats = ["All","Chumash","Mon-Thurs","Haftoros","Megillos","Yomim Tovim"];
+      $("categoryChips").innerHTML = cats.map(c => `<button class="chip ${category === c ? "active" : ""}" data-cat="${c}">${c === "All" ? "All (" + audioRows.length + ")" : c}</button>`).join("");
+      document.querySelectorAll("[data-cat]").forEach(b => b.onclick = () => { category = b.dataset.cat; page = 1; render(); });
+    }
+    function render() {
+      const rows = filtered(); const pages = Math.max(1, Math.ceil(rows.length / pageSize)); page = Math.min(page, pages);
+      const view = rows.slice((page - 1) * pageSize, page * pageSize);
+      $("fileCount").textContent = `${audioRows.length} files`;
+      $("audioRows").innerHTML = view.map(r => `<div class="table-row audio-grid"><div>🎧</div><div><strong>♫ ${r[1]}</strong><div class="row-meta">${r[2]}</div></div><div>${r[3]}</div><div>${r[4]}</div><div class="metric">${r[5]}</div><div class="metric">${r[6]}</div><span class="badge ${r[7].toLowerCase()}">${r[7]}</span><div class="actions"><button class="small-btn" data-play="${r[0]}">▶</button><button class="small-btn" data-edit="${r[0]}">✎</button><button class="small-btn" data-delete="${r[0]}">⌫</button></div></div>`).join("") || `<div class="empty">No audio found.</div>`;
+      $("pageInfo").textContent = `Showing ${rows.length ? (page - 1) * pageSize + 1 : 0}-${Math.min(page * pageSize, rows.length)} of ${rows.length} files`;
+      $("pages").innerHTML = Array.from({length: pages}, (_, i) => `<button class="page ${page === i + 1 ? "active" : ""}" data-page="${i + 1}">${i + 1}</button>`).join("");
+      document.querySelectorAll("[data-page]").forEach(b => b.onclick = () => { page = Number(b.dataset.page); render(); });
+      document.querySelectorAll("[data-play]").forEach(b => b.onclick = () => playRow(b.dataset.play));
+      document.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => openModal(b.dataset.edit));
+      document.querySelectorAll("[data-delete]").forEach(b => b.onclick = () => { audioRows = audioRows.filter(r => r[0] !== b.dataset.delete); saveStorage(); toast("Audio deleted"); renderChips(); render(); });
+    }
+    function playRow(id) {
+      const row = audioRows.find(r => r[0] === id); currentId = id;
+      $("playerPanel").classList.remove("hidden"); $("playerTitle").textContent = row[1]; $("playerMeta").textContent = `${row[3]} · ${row[5]} · ${row[6]}`;
+      $("audioPlayer").play(); $("playPause").textContent = "⏸ Pause"; toast("Preview started");
+    }
+    $("playPause").onclick = () => { const a = $("audioPlayer"); if (a.paused) { a.play(); $("playPause").textContent = "⏸ Pause"; } else { a.pause(); $("playPause").textContent = "▶ Play"; } };
+
+    // Drag and Drop / File Input
+    const dropZone = $("dropZone"), fileInput = $("fileInput");
+    dropZone.onclick = () => fileInput.click();
+    fileInput.onchange = (e) => handleFiles(e.target.files);
+    dropZone.ondragover = (e) => { e.preventDefault(); dropZone.style.borderColor = "var(--a-primary)"; };
+    dropZone.ondragleave = () => { dropZone.style.borderColor = ""; };
+    dropZone.ondrop = (e) => { e.preventDefault(); dropZone.style.borderColor = ""; handleFiles(e.dataTransfer.files); };
+
+    function handleFiles(files) {
+      if (!files || !files.length) return;
+      const file = files[0];
+      $("fileNameDisplay").textContent = `Selected: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`;
+      if (!$("titleInput").value) $("titleInput").value = file.name.replace(/\.[^/.]+$/, "");
+      if (!$("sizeInput").value) $("sizeInput").value = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+      if (!$("durationInput").value) $("durationInput").value = "3:30";
+      if (!$("parshaInput").value) $("parshaInput").value = "General";
+      if (!$("aliyaInput").value) $("aliyaInput").value = "Full";
+    }
+
+    function openModal(id) {
+      editingId = id || null; const row = audioRows.find(r => r[0] === id) || ["","","","Chumash (Parshios)","","","","Published"];
+      $("modalTitle").textContent = id ? "Edit Audio" : "Upload Audio"; $("titleInput").value = row[1]; $("parshaInput").value = row[2]; $("categoryInput").value = row[3] || "Chumash (Parshios)"; $("aliyaInput").value = row[4]; $("durationInput").value = row[5]; $("sizeInput").value = row[6]; $("statusInput").value = row[7] || "Published";
+      $("fileNameDisplay").textContent = "MP3, WAV, M4A up to 250MB";
+      $("uploadModal").classList.add("open");
+    }
+    function closeModal() { $("uploadModal").classList.remove("open"); editingId = null; }
+    $("openModalTop").onclick = () => openModal(); $("closeModal").onclick = closeModal; $("cancelModal").onclick = closeModal;
+    $("draftBtn").onclick = () => { $("statusInput").value = "Draft"; $("audioForm").requestSubmit(); };
+    $("audioForm").onsubmit = (e) => {
+      e.preventDefault(); const next = [editingId || `aud-${Date.now()}`, $("titleInput").value || "Untitled Audio", $("parshaInput").value || "General", $("categoryInput").value, $("aliyaInput").value || "Full", $("durationInput").value || "3:00", $("sizeInput").value || "5.0 MB", $("statusInput").value];
+      audioRows = editingId ? audioRows.map(r => r[0] === editingId ? next : r) : [next, ...audioRows];
+      saveStorage();
+      closeModal();
+      toast(editingId ? "Audio saved" : "Audio uploaded successfully");
+      category = "All";
+      renderChips(); render();
+    };
+    $("searchInput").oninput = () => { page = 1; render(); };
+    $("exportBtn").onclick = () => { const csv = ["Title,Parsha,Category,Aliya,Duration,Size,Status", ...audioRows.map(r => r.slice(1).map(v => `"${v}"`).join(","))].join("\n"); const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"})); a.download = "audio-library.csv"; a.click(); toast("CSV exported"); };
+    $("notifBtn").onclick = () => toast("3 uploads awaiting review");
+    renderChips(); render();
+  </script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EZLain Notifications</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="side-logo"><div class="logo-mark">EZ</div><div class="side-copy"><div class="side-brand">EZLain</div><div class="side-sub">Admin</div></div></div>
+      <nav class="nav">
+        <div class="nav-title">Overview</div><a class="nav-item" href="./dashboard.html">[ ] <span>Dashboard</span></a><a class="nav-item" href="./analytics.html">[-] <span>Analytics</span></a>
+        <div class="nav-title">Content</div><a class="nav-item" href="./audio-upload.html">♪ <span>Audio Library</span></a>
+        <div class="nav-title">Users</div><a class="nav-item" href="./payments.html">[$] <span>Payments</span></a><a class="nav-item active" href="./notifications.html">[!] <span>Notifications</span></a>
+        <div class="nav-title">System</div><a class="nav-item" href="./settings.html">[*] <span>Settings</span></a>
+      </nav>
+      <div class="side-footer"><div class="avatar">RA</div><div><strong>Rabbi Admin</strong><br><span style="color:rgba(255,255,255,.45)">Super Admin</span></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-btn" id="toggleSidebar" aria-label="Toggle sidebar">☰</button>
+        <div class="page-title">Notifications</div>
+      </header>
+      <section class="content">
+        <div class="single-column">
+          <div class="panel">
+            <div class="panel-head">Compose Notification</div>
+            <form class="modal-body" id="notifyForm">
+              <label class="field"><span class="label">Audience</span><select class="select" id="audience"><option>All users</option><option>Pro subscribers</option><option>Free users</option><option>Trial users</option></select></label>
+              <label class="field"><span class="label">Title</span><input class="input" id="title" value="New Chumash audio available" required></label>
+              <label class="field"><span class="label">Message</span><textarea class="textarea" id="message" required>Bereishit Aliya 1 is ready for practice.</textarea></label>
+              <div style="display:flex;justify-content:center"><button class="btn primary" style="height:34px" type="submit">Send Notification</button></div>
+            </form>
+          </div>
+
+          <div class="toolbar">
+            <input class="toolbar-search" id="search" style="flex:1" placeholder="Search notifications...">
+            <select class="chip" id="audienceFilter"><option value="All">All audiences</option><option>All users</option><option>Pro subscribers</option><option>Free users</option><option>Trial users</option></select>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">Recent Sends <span id="countText" class="row-meta"></span></div>
+            <div id="sendRows"></div>
+            <div class="footer"><span id="rangeText"></span><div class="pages" id="pages"></div></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    let notifications = [
+      { id: 1, title: "New Chumash audio available", message: "Bereishit Aliya 1 is ready for practice.", audience: "Pro subscribers", recipients: 1203, sentAt: "Jun 28, 2026 9:15 PM" },
+      { id: 2, title: "Weekly parsha reminder", message: "New practice tracks are ready for this week.", audience: "All users", recipients: 2847, sentAt: "Jun 27, 2026 7:30 PM" },
+      { id: 3, title: "Try Pro access", message: "Unlock full Haftorah and Yom Tov recordings.", audience: "Free users", recipients: 1644, sentAt: "Jun 26, 2026 4:05 PM" },
+      { id: 4, title: "Upload complete", message: "Ten new Chumash recordings are available.", audience: "Trial users", recipients: 318, sentAt: "Jun 25, 2026 11:10 AM" },
+      { id: 5, title: "Holiday collection", message: "Megillos and Yom Tov audio were refreshed.", audience: "All users", recipients: 2890, sentAt: "Jun 24, 2026 6:00 PM" },
+      { id: 6, title: "Subscription reminder", message: "Annual plan renewals begin next week.", audience: "Pro subscribers", recipients: 912, sentAt: "Jun 23, 2026 10:40 AM" }
+    ];
+    const state = { page: 1, perPage: 5, query: "", audience: "All" };
+    const rowsEl = document.getElementById("sendRows");
+    const pagesEl = document.getElementById("pages");
+
+    function toast(message) {
+      const el = document.getElementById("toast");
+      el.textContent = message;
+      el.classList.add("show");
+      setTimeout(() => el.classList.remove("show"), 1800);
+    }
+
+    function filteredNotifications() {
+      const q = state.query.toLowerCase();
+      return notifications.filter((item) => {
+        const matchQuery = [item.title, item.message, item.audience].join(" ").toLowerCase().includes(q);
+        const matchAudience = state.audience === "All" || item.audience === state.audience;
+        return matchQuery && matchAudience;
+      });
+    }
+
+    function render() {
+      const rows = filteredNotifications();
+      const totalPages = Math.max(1, Math.ceil(rows.length / state.perPage));
+      if (state.page > totalPages) state.page = totalPages;
+      const start = (state.page - 1) * state.perPage;
+      const pageRows = rows.slice(start, start + state.perPage);
+      rowsEl.innerHTML = pageRows.length ? pageRows.map((item) => `
+        <div class="row">
+          <div class="thumb">!</div>
+          <div class="row-main">
+            <div class="row-title">${item.title}</div>
+            <div>${item.message}</div>
+            <div class="row-meta">${item.audience} · ${item.recipients.toLocaleString()} recipients · ${item.sentAt}</div>
+          </div>
+          <button class="small-btn" data-delete="${item.id}" aria-label="Delete notification">x</button>
+        </div>
+      `).join("") : `<div class="empty">No notifications found.</div>`;
+      document.getElementById("countText").textContent = `${rows.length} sends`;
+      document.getElementById("rangeText").textContent = rows.length ? `Showing ${start + 1}-${Math.min(start + state.perPage, rows.length)} of ${rows.length}` : "Showing 0";
+      pagesEl.innerHTML = totalPages > 1 ? Array.from({ length: totalPages }, (_, i) => `<button class="page ${state.page === i + 1 ? "active" : ""}" data-page="${i + 1}">${i + 1}</button>`).join("") : "";
+    }
+
+    document.getElementById("notifyForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const title = document.getElementById("title").value.trim();
+      const message = document.getElementById("message").value.trim();
+      const audience = document.getElementById("audience").value;
+      if (!title || !message) {
+        toast("Title and message are required");
+        return;
+      }
+      notifications = [{ id: Date.now(), title, message, audience, recipients: Math.floor(300 + Math.random() * 2600), sentAt: new Date().toLocaleString() }, ...notifications];
+      state.page = 1;
+      render();
+      toast("Notification sent");
+    });
+    document.getElementById("search").addEventListener("input", (event) => { state.query = event.target.value; state.page = 1; render(); });
+    document.getElementById("audienceFilter").addEventListener("change", (event) => { state.audience = event.target.value; state.page = 1; render(); });
+    pagesEl.addEventListener("click", (event) => { if (event.target.dataset.page) { state.page = Number(event.target.dataset.page); render(); } });
+    rowsEl.addEventListener("click", (event) => {
+      if (event.target.dataset.delete) {
+        notifications = notifications.filter((item) => item.id !== Number(event.target.dataset.delete));
+        render();
+        toast("Notification removed");
+      }
+    });
+    document.getElementById("toggleSidebar").addEventListener("click", () => document.querySelector(".sidebar").classList.toggle("hidden"));
+    render();
+  </script>
+</body>
+</html>
