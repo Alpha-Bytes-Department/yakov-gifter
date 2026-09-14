@@ -627,6 +627,12 @@ class PublicPageTests(TestCase):
     def test_api_root_still_answers_for_monitoring(self):
         self.assertEqual(self.client.get('/api/').status_code, 200)
 
+    def test_favicon_resolves(self):
+        response = self.client.get('/favicon.svg')
+        # Redirects to the hashed static path in production, serves directly in
+        # development; either way a browser must not get a 404.
+        self.assertIn(response.status_code, (200, 301, 302))
+
 
 class DemoContentAuditTests(TestCase):
     """
