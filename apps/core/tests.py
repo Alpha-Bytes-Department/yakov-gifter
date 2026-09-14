@@ -268,3 +268,59 @@ class AudioLibraryTests(TestCase):
         response = self.client.delete(f'{self.url}{rec.id}/')
         self.assertEqual(response.status_code, 200, response.content)
         self.assertFalse(AudioRecording.objects.filter(id=rec.id).exists())
+
+
+class LoginLockoutTests(TestCase):
+    """
+    The audit reported no rate limiting or lockout on sign-in.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+        self.staff = User.objects.create_user(
+            email='staff@example.com', password='correct-horse-battery',
+            first_name='Staff', last_name='Member',
+        )
+        self.staff.is_staff = True
+        self.staff.save()
+        self.url = reverse('admin_dashboard_session_login')
+
+    def _attempt(self, password):
+        return self.client.post(
+            self.url,
+            data=json.dumps({'email': 'staff@example.com', 'password': password}),
+            content_type='application/json',
+        )
+
+    def test_repeated_failures_lock_the_account(self):
+        from apps.core.ratelimit import MAX_FAILURES_PER_ACCOUNT
+
+        for _ in range(MAX_FAILURES_PER_ACCOUNT - 1):
+            self.assertEqual(self._attempt('wrong').status_code, 401)
+
+        # The one that trips the limit, and everything after it.
+        self.assertEqual(self._attempt('wrong').status_code, 429)
+        self.assertEqual(self._attempt('wrong').status_code, 429)
+
+    def test_lockout_holds_even_against_the_right_password(self):
+        from apps.core.ratelimit import MAX_FAILURES_PER_ACCOUNT
+
+        for _ in range(MAX_FAILURES_PER_ACCOUNT):
+            self._attempt('wrong')
+
+        # Otherwise an attacker who guesses correctly on attempt 50 still wins.
+        response = self._attempt('correct-horse-battery')
+        self.assertEqual(response.status_code, 429)
+        self.assertNotIn('sessionid', response.cookies)
+
+    def test_a_successful_sign_in_clears_the_counter(self):
+        self._attempt('wrong')
+        self._attempt('wrong')
+
+        self.assertEqual(self._attempt('correct-horse-battery').status_code, 200)
+
+        self.client.logout()
+        # Budget is full again, so a later typo is not penalised by old failures.
+        self.assertEqual(self._attempt('wrong').status_code, 401)

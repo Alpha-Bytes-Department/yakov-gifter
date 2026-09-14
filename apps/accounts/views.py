@@ -56,12 +56,28 @@ class LoginView(generics.GenericAPIView):
     throttle_classes = [AuthRateThrottle]
 
     def post(self, request, *args, **kwargs):
+        from rest_framework.exceptions import Throttled
+        from apps.core.ratelimit import (
+            client_ip, is_locked_out, register_failure, reset,
+        )
+
+        email = (request.data.get('email') or '').strip()
+        ip = client_ip(request)
+
+        # The DRF throttle above counts per address. Lockout also counts per
+        # account, so rotating IPs does not reset an attacker's budget against
+        # one user's password.
+        if is_locked_out(email, ip):
+            raise Throttled(detail='Too many attempts. Try again in 15 minutes.')
+
         serializer = self.get_serializer(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            register_failure(email, ip)
+            serializer.is_valid(raise_exception=True)
+
         user = serializer.validated_data['user']
-        
-        # update last login? optional
-        
+        reset(email, ip)
+
         tokens = get_tokens_for_user(user)
         return Response({
             'user': UserProfileSerializer(user).data,

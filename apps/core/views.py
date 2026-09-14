@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAdminUser
 from django.contrib.auth import get_user_model
 from django.db.models import Sum
 from apps.content.models import AudioTrack
+from apps.core.ratelimit import client_ip, is_locked_out, register_failure, reset
 from apps.payments.models import UserSubscription
 from django.utils import timezone
 from datetime import timedelta
@@ -682,14 +683,31 @@ class DashboardSessionLoginView(View):
                 {'detail': 'Email and password are required.'}, status=400
             )
 
+        ip = client_ip(request)
+
+        # This view is a plain Django View, so DRF's throttles do not apply to
+        # it. Check before touching the password, so a locked account costs an
+        # attacker a cache read rather than a hash comparison.
+        if is_locked_out(email, ip):
+            return JsonResponse(
+                {'detail': 'Too many attempts. Try again in 15 minutes.'},
+                status=429,
+            )
+
         user = authenticate(request, username=email, password=password)
 
         # Same response for unknown user, wrong password and non-staff account,
         # so the form cannot be used to enumerate who has an account.
         if user is None or not user.is_staff:
-            logger.warning('Dashboard login failed for %s', email)
+            logger.warning('Dashboard login failed for %s from %s', email, ip)
+            if register_failure(email, ip):
+                return JsonResponse(
+                    {'detail': 'Too many attempts. Try again in 15 minutes.'},
+                    status=429,
+                )
             return JsonResponse({'detail': 'Invalid credentials.'}, status=401)
 
+        reset(email, ip)
         auth_login(request, user)
         return JsonResponse({'detail': 'Signed in.'})
 
