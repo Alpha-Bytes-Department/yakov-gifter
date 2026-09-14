@@ -32,7 +32,7 @@
               <label class="field"><span class="label">Display Name</span><input class="input" id="adminName" value="" required></label>
               <label class="field"><span class="label">Role</span><input class="input" id="adminRole" value="" required></label>
               <label class="field"><span class="label">Email</span><input class="input" id="adminEmail" value="" type="email" required></label>
-              <label class="field"><span class="label">Timezone</span><select class="select" id="timezone"><option>Asia/Dhaka</option><option>America/New_York</option><option>Asia/Jerusalem</option><option>Europe/London</option></select></label>
+              <label class="field"><span class="label">Timezone</span><select class="select" id="timezone"><option>America/New_York</option><option>America/Chicago</option><option>America/Denver</option><option>America/Los_Angeles</option><option>Asia/Jerusalem</option><option>Europe/London</option><option>UTC</option><option>Asia/Dhaka</option></select></label>
             </div>
           </div>
 
@@ -73,7 +73,7 @@
             adminName: "",
             adminRole: "",
             adminEmail: "",
-            timezone: "Asia/Dhaka",
+            timezone: "America/New_York",
             defaultStatus: "published",
             pageSize: "10",
             emailReports: false,
@@ -146,7 +146,11 @@
                 const res = await apiFetch('/core/admin/settings/');
                 if (res.ok) {
                     const responseData = await res.json();
-                    const settings = Array.isArray(responseData) ? responseData[0] : responseData;
+                    // Responses are wrapped as { success, data, ... } by
+                    // StandardJSONRenderer. Reading fields off the wrapper is
+                    // what produced the empty fields and "undefined" values.
+                    const payload = responseData.data || responseData;
+                    const settings = Array.isArray(payload) ? payload[0] : payload;
                     
                     if (settings) {
                         if (settings.admin_profile) {
@@ -159,6 +163,9 @@
                         localSettings.paymentAlerts = settings.payment_alerts;
                         localSettings.defaultStatus = settings.default_upload_status;
                         localSettings.pageSize = String(settings.library_page_size);
+                        if (settings.timezone) {
+                            localSettings.timezone = settings.timezone;
+                        }
                         writeForm();
                     }
                 }
@@ -181,7 +188,8 @@
                     auto_publish_uploads: localSettings.autoPublish,
                     payment_alerts: localSettings.paymentAlerts,
                     default_upload_status: localSettings.defaultStatus,
-                    library_page_size: parseInt(localSettings.pageSize)
+                    library_page_size: parseInt(localSettings.pageSize),
+                    timezone: localSettings.timezone
                 };
 
                 try {

@@ -101,6 +101,14 @@
                             <option value="Nusach HaTefilla">Nusach HaTefilla</option>
                         </select>
                     </label>
+                    <label class="field"><span class="label">Parsha</span>
+                        <select class="select" id="parshaInput">
+                            <option value="">Select Parsha</option>
+                        </select>
+                    </label>
+                    <label class="field"><span class="label">Segment</span>
+                        <input class="input" id="segmentInput"
+                               placeholder="e.g. Aliya 1, Full, Haftorah"></label>
                 </div>
                 <div id="uploadProgressContainer" style="display:none; margin-top:14px;">
                     <div
@@ -153,6 +161,7 @@
                     const responseData = await res.json();
                     allParshas = responseData.data || responseData;
                     const parshaSelect = document.getElementById("parshaInput");
+                    if (!parshaSelect) { return; }
                     parshaSelect.innerHTML = '<option value="">Select Parsha</option>' +
                         allParshas.map(p => `<option value="${p.id}">${p.name} (${p.sefer})</option>`).join("");
                 }
@@ -190,7 +199,8 @@
                         const fallbackRes = await apiFetch('/content/admin-tracks/');
                         if (fallbackRes.ok) {
                             const fbData = await fallbackRes.json();
-                            audioRows = fbData.results || fbData;
+                            const fbInner = fbData.data || fbData;
+                            audioRows = fbInner.results || fbInner;
                             renderChips();
                             render();
                         }
@@ -370,6 +380,19 @@
                     formData.append("title_hebrew", document.getElementById("titleHebrewInput").value);
                 }
                 formData.append("category", document.getElementById("categoryInput").value);
+
+                // Without a parsha the upload becomes a standalone
+                // AudioRecording, which has no parsha link and is therefore
+                // invisible in the app. The field existed in the JS but was
+                // never rendered or sent.
+                const parshaValue = document.getElementById("parshaInput").value;
+                if (parshaValue) {
+                    formData.append("parsha", parshaValue);
+                }
+                const segmentValue = document.getElementById("segmentInput").value;
+                if (segmentValue) {
+                    formData.append("segment_type", segmentValue);
+                }
 
                 const file = document.getElementById("fileInput").files[0];
                 if (file) {

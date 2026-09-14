@@ -65,6 +65,11 @@ class SiteSettings(TimeStampedModel):
         ('published', 'Published')
     ])
     library_page_size = models.IntegerField(default=24)
+    # The settings page offered a timezone control that was never persisted —
+    # it had no field to save into, so it reset to the hardcoded default on
+    # every load. That default was the development team's zone, which is why
+    # the client kept seeing Asia/Dhaka on his own dashboard.
+    timezone = models.CharField(max_length=64, default='America/New_York')
     
     class Meta:
         verbose_name_plural = "Site Settings"

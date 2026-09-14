@@ -535,3 +535,54 @@ class NotificationRecipientCountTests(TestCase):
 
         notification.refresh_from_db()
         self.assertEqual(notification.recipients_count, User.objects.count())
+
+
+class SiteSettingsTests(TestCase):
+    """
+    The settings page showed empty fields, "undefined" values, and a timezone
+    of Asia/Dhaka that reverted on every load.
+    """
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            email='staff@example.com', password='correct-horse-battery',
+            first_name='Staff', last_name='Member',
+        )
+        self.staff.is_staff = True
+        self.staff.is_superuser = True
+        self.staff.save()
+        self.client.force_login(self.staff)
+        self.url = '/api/v1/core/admin/settings/'
+
+    def test_settings_response_carries_the_expected_fields(self):
+        body = self.client.get(self.url).json()
+        # The page reads these off `data`; the bug was reading them off the
+        # wrapper, where every one of them is undefined.
+        payload = body['data'] if isinstance(body, dict) and 'data' in body else body
+
+        for field in [
+            'email_reports', 'auto_publish_uploads', 'payment_alerts',
+            'default_upload_status', 'library_page_size', 'timezone',
+            'admin_profile',
+        ]:
+            self.assertIn(field, payload)
+
+        self.assertEqual(payload['admin_profile']['email'], 'staff@example.com')
+
+    def test_timezone_does_not_default_to_the_dev_teams_zone(self):
+        from apps.core.models import SiteSettings
+        self.assertEqual(SiteSettings.get_settings().timezone, 'America/New_York')
+
+    def test_timezone_persists_across_a_save(self):
+        from apps.core.models import SiteSettings
+
+        response = self.client.post(self.url, data=json.dumps({
+            'timezone': 'Asia/Jerusalem', 'library_page_size': 30,
+        }), content_type='application/json')
+        self.assertEqual(response.status_code, 200, response.content)
+
+        # Previously there was no field to save into, so it reset every load.
+        SiteSettings.objects.all().update()  # bypass the cached singleton
+        from django.core.cache import cache
+        cache.delete('site_settings')
+        self.assertEqual(SiteSettings.get_settings().timezone, 'Asia/Jerusalem')
