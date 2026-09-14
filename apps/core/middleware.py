@@ -38,15 +38,24 @@ class ResponseTimeMiddleware:
         return response
 
 class SecurityHeadersMiddleware:
+    """
+    Deprecated — retained only so an existing MIDDLEWARE entry keeps importing.
+
+    Every header this used to set is now owned by Django's own SecurityMiddleware
+    via settings (SECURE_CONTENT_TYPE_NOSNIFF, SECURE_REFERRER_POLICY,
+    X_FRAME_OPTIONS). Setting them here too, on top of nginx doing the same, is
+    what produced the duplicate security headers the audit flagged.
+
+    X-XSS-Protection is deliberately not reissued: the header is obsolete, every
+    current browser ignores it, and its legacy filter could itself introduce
+    vulnerabilities. CSP replaces it.
+    """
+
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
-        response = self.get_response(request)
-        response['X-Content-Type-Options'] = 'nosniff'
-        response['X-XSS-Protection'] = '1; mode=block'
-        response['Referrer-Policy'] = 'strict-origin-when-cross-origin'
-        return response
+        return self.get_response(request)
 
 class GlobalExceptionMiddleware:
     def __init__(self, get_response):

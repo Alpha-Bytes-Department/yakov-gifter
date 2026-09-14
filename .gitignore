@@ -17,3 +17,8 @@ staticfiles/
 .coverage
 htmlcov/
 *.log
+
+# Windows virtualenv
+.venv_win/
+.venv_mac/
+.venv_mac_new/

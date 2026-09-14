@@ -31,7 +31,7 @@
         <input class="input focused" type="password" id="password" required>
       </label>
       <button class="login-submit" type="submit">Sign In to Dashboard</button>
-      <div class="security"><span>Protected · TLS 1.3 · 2FA Enabled</span></div>
+      <div class="security"><span>Protected · TLS 1.3</span></div>
     </form>
   </main>
   <div class="toast" id="toast"></div>
@@ -45,25 +45,27 @@
             const password = document.getElementById('password').value;
             
             try {
-                const res = await fetch('/api/v1/accounts/login/', {
+                // Establishes a Django session. The cookie is HttpOnly, so
+                // unlike the tokens this used to stash in localStorage, page
+                // script cannot read it.
+                const res = await fetch('/dashboard/session-login/', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken') || '',
+                    },
+                    credentials: 'same-origin',
                     body: JSON.stringify({ email, password })
                 });
-                
-                const responseData = await res.json();
-                
-                if (res.ok && responseData.success !== false) {
-                    const payload = responseData.data || responseData;
-                    if(payload.tokens) {
-                        localStorage.setItem('access_token', payload.tokens.access);
-                        localStorage.setItem('refresh_token', payload.tokens.refresh);
-                        toast("Login successful");
-                        setTimeout(() => { window.location.href = "/dashboard/"; }, 450);
-                    }
+
+                const responseData = await res.json().catch(() => ({}));
+
+                if (res.ok) {
+                    toast("Login successful");
+                    const next = new URLSearchParams(window.location.search).get('next');
+                    setTimeout(() => { window.location.href = next || "/dashboard/"; }, 450);
                 } else {
-                    const errPayload = responseData.errors || responseData;
-                    toast(errPayload.detail || errPayload.non_field_errors?.[0] || responseData.message || 'Invalid credentials');
+                    toast(responseData.detail || 'Invalid credentials');
                 }
             } catch (err) {
                 toast('Network error');

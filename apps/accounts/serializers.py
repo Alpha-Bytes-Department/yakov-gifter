@@ -165,18 +165,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
             return obj.bar_mitzvah_date.isoformat()
         
         if obj.date_of_birth:
-            try:
-                from pyluach import dates
-                import datetime
-                heb_dob = dates.GregorianDate.frompydate(obj.date_of_birth).to_heb()
-                heb_bm = dates.HebrewDate(heb_dob.year + 13, heb_dob.month, heb_dob.day)
-                return heb_bm.to_pydate().isoformat()
-            except Exception:
-                try:
-                    return obj.date_of_birth.replace(year=obj.date_of_birth.year + 13).isoformat()
-                except ValueError:
-                    import datetime
-                    return (obj.date_of_birth + datetime.timedelta(days=365*13 + 3)).isoformat()
+            # Shared helper, so this and /parshas/calendar/next/ cannot drift
+            # apart. The old inline copy called GregorianDate.frompydate, which
+            # does not exist in pyluach 2.x — every call raised AttributeError
+            # and the bare `except` quietly returned a plain Gregorian +13.
+            from apps.parshas.hebrew_dates import hebrew_bar_mitzvah_date
+
+            return hebrew_bar_mitzvah_date(obj.date_of_birth).isoformat()
         return None
 
     def get_linked_children(self, obj):

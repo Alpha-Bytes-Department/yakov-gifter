@@ -1,3 +1,5 @@
+import logging
+
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -5,6 +7,8 @@ from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from django.db import models
 from apps.payments.models import SubscriptionPlan, UserSubscription
 from apps.payments.serializers import SubscriptionPlanSerializer, UserSubscriptionSerializer
+
+logger = logging.getLogger(__name__)
 
 class AdminPaymentViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = UserSubscription.objects.all().order_by('-created_at')
@@ -159,69 +163,169 @@ class PaymentViewSet(viewsets.GenericViewSet):
         
         payload = request.body
         sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
-        event = None
-        
+
+        # Every webhook must be signed. The previous branch fell back to parsing
+        # the body unverified whenever STRIPE_WEBHOOK_SECRET was unset, which let
+        # anyone POST a forged checkout.session.completed and hand themselves a
+        # pro subscription. Refuse instead, and say so loudly in the log.
+        if not webhook_secret:
+            logger.error(
+                'Stripe webhook rejected: STRIPE_WEBHOOK_SECRET is not configured'
+            )
+            return Response(
+                {"detail": "Webhook signing is not configured."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        if not sig_header:
+            return Response(
+                {"detail": "Missing Stripe signature."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
-            if webhook_secret and sig_header:
-                event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
-            else:
-                import json
-                event = stripe.Event.construct_from(json.loads(payload), stripe.api_key)
-        except Exception as e:
-            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-            
+            event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+        except ValueError:
+            return Response(
+                {"detail": "Malformed payload."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except stripe.error.SignatureVerificationError:
+            logger.warning('Stripe webhook rejected: bad signature')
+            return Response(
+                {"detail": "Signature verification failed."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         event_type = event.get('type')
-        data_object = event.get('data', {}).get('object', {})
-        
+        # A field can be present and null, so `.get(k, {})` is not enough — that
+        # is what turned a merely unusual event into a 500 and made Stripe retry
+        # it forever.
+        data_object = (event.get('data') or {}).get('object') or {}
+
+        try:
+            self._apply_stripe_event(event_type, data_object)
+        except Exception:
+            # Log with the event id so it can be replayed from the Stripe
+            # dashboard, but return 200: a 500 here makes Stripe retry a message
+            # we already know we cannot process, and the retries bury real ones.
+            logger.exception(
+                'Stripe webhook handler failed for event %s (%s)',
+                event.get('id'), event_type,
+            )
+
+        return Response(status=status.HTTP_200_OK)
+
+    def _apply_stripe_event(self, event_type, data_object):
+        """Applies a verified Stripe event. Raises on unexpected shapes."""
         from django.contrib.auth import get_user_model
         User = get_user_model()
-        
+
         if event_type == 'checkout.session.completed':
             user_id = data_object.get('client_reference_id')
             customer_id = data_object.get('customer')
             sub_id = data_object.get('subscription')
-            
+
             user = User.objects.filter(id=user_id).first() if user_id else None
             if not user:
-                # Fallback to customer email
-                email = data_object.get('customer_details', {}).get('email')
-                user = User.objects.filter(email=email).first()
-                
-            if user:
-                user.is_pro = True
-                user.save()
-                
-                # Update or create subscription details
-                user_sub, _ = UserSubscription.objects.get_or_create(user=user)
-                user_sub.stripe_customer_id = customer_id
-                user_sub.stripe_subscription_id = sub_id
-                user_sub.status = 'active'
-                user_sub.save()
-                
+                # Fallback to customer email.
+                email = (data_object.get('customer_details') or {}).get('email')
+                user = User.objects.filter(email=email).first() if email else None
+
+            if not user:
+                logger.warning(
+                    'Stripe checkout completed but no matching user '
+                    '(client_reference_id=%s, customer=%s)', user_id, customer_id,
+                )
+                return
+
+            user.is_pro = True
+            user.save()
+
+            user_sub, _ = UserSubscription.objects.get_or_create(user=user)
+            user_sub.stripe_customer_id = customer_id
+            user_sub.stripe_subscription_id = sub_id
+            user_sub.status = 'active'
+            user_sub.save()
+
+            self._record_paid_subscription(user, data_object)
+
         elif event_type in ['invoice.payment_succeeded', 'customer.subscription.updated']:
             customer_id = data_object.get('customer')
-            sub_id = data_object.get('id') if event_type == 'customer.subscription.updated' else data_object.get('subscription')
-            
-            user_sub = UserSubscription.objects.filter(stripe_subscription_id=sub_id).first()
+            sub_id = (
+                data_object.get('id')
+                if event_type == 'customer.subscription.updated'
+                else data_object.get('subscription')
+            )
+
+            user_sub = (
+                UserSubscription.objects.filter(stripe_subscription_id=sub_id).first()
+                if sub_id else None
+            )
             if not user_sub and customer_id:
-                user_sub = UserSubscription.objects.filter(stripe_customer_id=customer_id).first()
-                
+                user_sub = UserSubscription.objects.filter(
+                    stripe_customer_id=customer_id
+                ).first()
+
             if user_sub:
                 user_sub.user.is_pro = True
                 user_sub.user.save()
                 user_sub.status = 'active'
                 user_sub.save()
-                
+                self._record_paid_subscription(user_sub.user, data_object)
+
         elif event_type in ['customer.subscription.deleted', 'invoice.payment_failed']:
-            sub_id = data_object.get('id') if event_type == 'customer.subscription.deleted' else data_object.get('subscription')
-            user_sub = UserSubscription.objects.filter(stripe_subscription_id=sub_id).first()
+            sub_id = (
+                data_object.get('id')
+                if event_type == 'customer.subscription.deleted'
+                else data_object.get('subscription')
+            )
+            user_sub = (
+                UserSubscription.objects.filter(stripe_subscription_id=sub_id).first()
+                if sub_id else None
+            )
             if user_sub:
                 user_sub.user.is_pro = False
                 user_sub.user.save()
                 user_sub.status = 'canceled'
                 user_sub.save()
-                
-        return Response(status=status.HTTP_200_OK)
+
+                profile = getattr(user_sub.user, 'profile', None)
+                if profile is not None:
+                    profile.subscription_type = 'Free'
+                    profile.save(update_fields=['subscription_type'])
+
+    @staticmethod
+    def _record_paid_subscription(user, data_object):
+        """
+        Mirrors a completed payment onto UserProfile.
+
+        Revenue reporting reads UserProfile.subscription_type while the webhook
+        only ever wrote UserSubscription, so real Stripe payments never reached
+        the analytics figures — the dashboard showed $0 against a live $5
+        subscription. Keep the two in step at the point money actually moves.
+        """
+        from apps.users_and_subs.models import UserProfile
+
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+
+        # Stripe reports minor units (cents).
+        amount = (
+            data_object.get('amount_total')
+            or data_object.get('amount_paid')
+            or 0
+        )
+        interval = (
+            ((data_object.get('plan') or {}).get('interval'))
+            or ((data_object.get('items') or {}).get('interval'))
+        )
+
+        if interval == 'year' or amount >= 4000:
+            profile.subscription_type = 'Yearly $49'
+        else:
+            profile.subscription_type = 'Monthly $5'
+
+        profile.save(update_fields=['subscription_type'])
 
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def webhook(self, request):

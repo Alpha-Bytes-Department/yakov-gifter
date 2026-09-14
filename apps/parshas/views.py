@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from apps.parshas.models import Parsha, ReadingSchedule
 from apps.parshas.serializers import ParshaSerializer, ReadingScheduleSerializer
+from apps.parshas.hebrew_dates import hebrew_bar_mitzvah_date
 
 class ParshaViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = ParshaSerializer
@@ -66,21 +67,8 @@ class ReadingScheduleViewSet(viewsets.ModelViewSet):
         bar_mitzvah_date = request.user.bar_mitzvah_date
         
         if not bar_mitzvah_date and request.user.date_of_birth:
-            try:
-                from pyluach import dates
-                # 1. Convert Gregorian DOB to Hebrew date
-                heb_dob = dates.GregorianDate.frompydate(request.user.date_of_birth).to_heb()
-                # 2. Add 13 Hebrew years
-                heb_bm = dates.HebrewDate(heb_dob.year + 13, heb_dob.month, heb_dob.day)
-                # 3. Convert back to Gregorian date
-                bar_mitzvah_date = heb_bm.to_pydate()
-            except Exception as e:
-                # Fallback to Gregorian + 13 years if conversion fails
-                try:
-                    bar_mitzvah_date = request.user.date_of_birth.replace(year=request.user.date_of_birth.year + 13)
-                except ValueError:
-                    bar_mitzvah_date = request.user.date_of_birth + datetime.timedelta(days=365*13 + 3)
-                
+            bar_mitzvah_date = hebrew_bar_mitzvah_date(request.user.date_of_birth)
+
         weeks_until = None
         if bar_mitzvah_date:
             delta = bar_mitzvah_date - today

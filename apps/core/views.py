@@ -1,5 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
 from django.contrib.auth import get_user_model
@@ -8,44 +9,91 @@ from apps.content.models import AudioTrack
 from apps.payments.models import UserSubscription
 from django.utils import timezone
 from datetime import timedelta
-from django.views.generic import TemplateView
+from django.views.generic import TemplateView, View
+from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
+from django.contrib.auth.mixins import AccessMixin
+from django.core.exceptions import PermissionDenied
+from django.http import JsonResponse
+from django.shortcuts import redirect
+from django.urls import reverse
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
+import json
+import logging
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
+
+class StaffOnlyTemplateView(AccessMixin, TemplateView):
+    """
+    Dashboard page that will not render to an anonymous visitor.
+
+    Every dashboard page used to be a bare TemplateView, so the full admin UI
+    rendered for anyone who knew the URL. The data APIs behind it did return 401,
+    so records were not exposed, but the shell leaked the layout and gave an
+    attacker a working console to aim at. Authentication belongs on the page, not
+    only on the API it calls.
+
+    Redirects to the dashboard login rather than Django's own, so an operator
+    lands somewhere that makes sense.
+    """
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect(f"{reverse('admin_dashboard_login')}?next={request.path}")
+        if not request.user.is_staff:
+            raise PermissionDenied('Staff access required.')
+        return super().dispatch(request, *args, **kwargs)
+
+
+@method_decorator(ensure_csrf_cookie, name='dispatch')
 class AdminLoginView(TemplateView):
+    """
+    Intentionally public — this is the door.
+
+    ensure_csrf_cookie so the sign-in POST has a token to send; without it the
+    cookie may not exist yet on a first visit.
+    """
     template_name = 'admin_dashboard/login.html'
 
-class AdminDashboardView(TemplateView):
+    def dispatch(self, request, *args, **kwargs):
+        # Already signed in? Skip the form.
+        if request.user.is_authenticated and request.user.is_staff:
+            return redirect('admin_dashboard_overview')
+        return super().dispatch(request, *args, **kwargs)
+
+class AdminDashboardView(StaffOnlyTemplateView):
     template_name = 'admin_dashboard/dashboard.html'
 
-class AdminAnalyticsView(TemplateView):
+class AdminAnalyticsView(StaffOnlyTemplateView):
     template_name = 'admin_dashboard/analytics.html'
 
-class AdminAudioView(TemplateView):
+class AdminAudioView(StaffOnlyTemplateView):
     template_name = 'admin_dashboard/audio-upload.html'
 
-class AdminPaymentsView(TemplateView):
+class AdminPaymentsView(StaffOnlyTemplateView):
     template_name = 'admin_dashboard/payments.html'
 
-class AdminNotificationsView(TemplateView):
+class AdminNotificationsView(StaffOnlyTemplateView):
     template_name = 'admin_dashboard/notifications.html'
 
-class AdminSettingsView(TemplateView):
+class AdminSettingsView(StaffOnlyTemplateView):
     template_name = 'admin_dashboard/settings.html'
 
-class AdminCoachingView(TemplateView):
+class AdminCoachingView(StaffOnlyTemplateView):
     template_name = 'admin_dashboard/coaching.html'
 
-class AdminUsersView(TemplateView):
+class AdminUsersView(StaffOnlyTemplateView):
     template_name = 'admin_dashboard/users.html'
 
-class AdminScheduleView(TemplateView):
+class AdminScheduleView(StaffOnlyTemplateView):
     template_name = 'admin_dashboard/schedule.html'
 
-class AdminFeedbackView(TemplateView):
+class AdminFeedbackView(StaffOnlyTemplateView):
     template_name = 'admin_dashboard/feedback.html'
 
-class AdminTestimonialsView(TemplateView):
+class AdminTestimonialsView(StaffOnlyTemplateView):
     template_name = 'admin_dashboard/testimonials.html'
 
 class AdminDashboardViewSet(viewsets.ViewSet):
@@ -75,8 +123,10 @@ class AdminDashboardViewSet(viewsets.ViewSet):
         yearly_count = UserProfile.objects.filter(subscription_type='Yearly $49').count()
         onetime_count = UserProfile.objects.filter(has_one_time_purchase_36=True).count()
         revenue = (monthly_count * 5) + (yearly_count * 49) + (onetime_count * 36)
-        if revenue == 0:
-            revenue = pro_users * 5
+        # No `if revenue == 0: revenue = pro_users * 5` fallback. That invented a
+        # figure whenever the real one was zero, which meant the dashboard could
+        # never be trusted — and it masked the actual bug, that Stripe payments
+        # were not being written to UserProfile at all. Zero should read as zero.
 
         # Recent Audio Uploads from AudioRecording
         recent_recordings = AudioRecording.objects.order_by('-created_at')[:10]
@@ -268,6 +318,27 @@ class AdminDashboardViewSet(viewsets.ViewSet):
         from apps.audio_manager.serializers import AudioRecordingSerializer
         
         if request.method == 'POST':
+            # An upload that names a parsha becomes an AudioTrack, because that
+            # is the model the mobile app reads. Uploads used to always land in
+            # AudioRecording, which has no parsha link and no aliya — so the
+            # file saved fine, appeared in this list, and was invisible in the
+            # app. That is the "it uploaded to the wrong place" the client hit.
+            parsha_id = request.data.get('parsha')
+            if parsha_id:
+                track = self._create_track_from_upload(request)
+                return Response(
+                    {
+                        'id': f'track-{track.id}',
+                        'source': 'track',
+                        'title_english': track.title,
+                        'category': track.category,
+                        'audio_file': track.audio_file.url if track.audio_file else None,
+                        'parsha': track.parsha_id,
+                        'segment_type': track.segment_type,
+                    },
+                    status=status.HTTP_201_CREATED,
+                )
+
             serializer = AudioRecordingSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             serializer.save()
@@ -312,12 +383,71 @@ class AdminDashboardViewSet(viewsets.ViewSet):
         
         return Response(results)
 
-    @action(detail=False, methods=['delete'], url_path=r'audio_recordings/(?P<recording_id>\d+)')
+    # The dashboard shows the friendly category labels; AudioTrack stores slugs.
+    UPLOAD_CATEGORY_SLUGS = {
+        'Chumash (Parshios)': 'chumash',
+        'Mon-Thurs Lainings': 'mon_thu',
+        'Haftoros': 'haftoros',
+        'Megillos': 'megillos',
+        'Nusach HaTefilla': 'nusach',
+        'Yomim Tovim / Special Lainings': 'yomim_tovim',
+    }
+
+    def _create_track_from_upload(self, request):
+        from django.shortcuts import get_object_or_404
+        from apps.parshas.models import Parsha
+
+        parsha = get_object_or_404(Parsha, id=request.data.get('parsha'))
+        raw_category = request.data.get('category', '')
+        category = self.UPLOAD_CATEGORY_SLUGS.get(raw_category, raw_category)
+
+        audio_file = request.FILES.get('audio_file')
+        if not audio_file:
+            raise ValidationError({'audio_file': 'An audio file is required.'})
+
+        return AudioTrack.objects.create(
+            title=request.data.get('title_english') or parsha.name,
+            audio_file=audio_file,
+            category=category,
+            parsha=parsha,
+            segment_type=request.data.get('segment_type') or None,
+            file_size_bytes=getattr(audio_file, 'size', 0) or 0,
+            # Published, or the app would not show it — an upload that stays in
+            # draft looks identical to a failed upload from the client's side.
+            status='published',
+        )
+
+    @action(
+        detail=False,
+        methods=['delete'],
+        url_path=r'audio_recordings/(?P<recording_id>track-\d+|\d+)',
+    )
     def delete_audio_recording(self, request, recording_id=None):
+        """
+        Deletes an audio item from either backing table.
+
+        The listing above merges two models and prefixes AudioTrack ids with
+        'track-', but this route only ever matched bare digits — so deleting
+        anything from the AudioTrack side (which is the bulk of the library)
+        404'd silently. That is the "it wouldn't delete either" the client
+        reported.
+        """
         from django.shortcuts import get_object_or_404
         from apps.audio_manager.models import AudioRecording
-        rec = get_object_or_404(AudioRecording, id=recording_id)
-        rec.delete()
+
+        if str(recording_id).startswith('track-'):
+            track = get_object_or_404(AudioTrack, id=str(recording_id).split('-', 1)[1])
+            # Drop the file too, otherwise deleting a library of recordings
+            # leaves the storage bucket full of orphans.
+            if track.audio_file:
+                track.audio_file.delete(save=False)
+            track.delete()
+        else:
+            rec = get_object_or_404(AudioRecording, id=recording_id)
+            if rec.audio_file:
+                rec.audio_file.delete(save=False)
+            rec.delete()
+
         return Response({'status': 'deleted', 'id': recording_id})
 
     @action(detail=False, methods=['get'])
@@ -523,3 +653,48 @@ class SiteSettingsViewSet(viewsets.ViewSet):
             testimonial.save()
             
         return Response({'id': testimonial.id, 'status': 'approved' if testimonial.is_approved else 'pending'})
+
+
+class DashboardSessionLoginView(View):
+    """
+    Establishes a Django session for the admin dashboard.
+
+    The dashboard used to authenticate purely with a JWT held in localStorage,
+    which meant two things: the server had no idea who was viewing a page (so
+    pages could not be protected), and any XSS on the dashboard could read the
+    tokens straight out of storage. A session cookie is set HttpOnly by Django,
+    so script cannot read it, and it gives the page views something to check.
+
+    JWT remains the mobile app's mechanism; this is only for the browser UI.
+    """
+
+    def post(self, request, *args, **kwargs):
+        try:
+            payload = json.loads(request.body or '{}')
+        except ValueError:
+            return JsonResponse({'detail': 'Invalid request.'}, status=400)
+
+        email = (payload.get('email') or '').strip()
+        password = payload.get('password') or ''
+
+        if not email or not password:
+            return JsonResponse(
+                {'detail': 'Email and password are required.'}, status=400
+            )
+
+        user = authenticate(request, username=email, password=password)
+
+        # Same response for unknown user, wrong password and non-staff account,
+        # so the form cannot be used to enumerate who has an account.
+        if user is None or not user.is_staff:
+            logger.warning('Dashboard login failed for %s', email)
+            return JsonResponse({'detail': 'Invalid credentials.'}, status=401)
+
+        auth_login(request, user)
+        return JsonResponse({'detail': 'Signed in.'})
+
+
+class DashboardSessionLogoutView(View):
+    def post(self, request, *args, **kwargs):
+        auth_logout(request)
+        return JsonResponse({'detail': 'Signed out.'})

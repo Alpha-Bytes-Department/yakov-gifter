@@ -16,43 +16,61 @@ function toast(message) {
     setTimeout(() => el.classList.remove("show"), 3000);
 }
 
-function logout() {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+// Authentication is a session cookie set HttpOnly by Django. Script cannot read
+// it, which is the point — it replaces the access/refresh tokens that used to
+// sit in localStorage where any XSS could lift them. The cookie rides along
+// automatically; all we have to supply by hand is the CSRF token.
+function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(^|;\\s*)' + name + '=([^;]*)'));
+    return match ? decodeURIComponent(match[2]) : null;
+}
+
+async function logout() {
+    try {
+        await fetch('/dashboard/session-logout/', {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') || '' },
+            credentials: 'same-origin',
+        });
+    } catch (err) {
+        // Falling through to the redirect is fine — the session is server-side,
+        // so the worst case is it expires on its own.
+    }
     window.location.href = '/dashboard/login/';
 }
 
 async function apiFetch(endpoint, options = {}) {
-    const token = localStorage.getItem('access_token');
-    const defaultOptions = {
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-        }
-    };
-    const res = await fetch(`${BASE_URL}${endpoint}`, { ...defaultOptions, ...options });
+    const method = (options.method || 'GET').toUpperCase();
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+
+    // Django exempts the safe methods; everything else needs the token.
+    if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
+        headers['X-CSRFToken'] = getCookie('csrftoken') || '';
+    }
+
+    // FormData sets its own multipart boundary — leave Content-Type alone.
+    if (options.body instanceof FormData) {
+        delete headers['Content-Type'];
+    }
+
+    const res = await fetch(`${BASE_URL}${endpoint}`, {
+        ...options,
+        headers,
+        credentials: 'same-origin',
+    });
+
     if (res.status === 401 || res.status === 403) {
-        // Handle token expiration/refresh later if needed. For now, simple redirect.
-        logout();
+        window.location.href = '/dashboard/login/';
     }
     return res;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     const currentPath = window.location.pathname;
-    const isLoginPage = currentPath.includes('/login');
-    
-    // Auth Check
-    const token = localStorage.getItem('access_token');
-    if (!token && !isLoginPage) {
-        window.location.href = '/dashboard/login/';
-        return;
-    }
-    if (token && isLoginPage) {
-        window.location.href = '/dashboard/';
-        return;
-    }
-    
+
+    // The server decides who may see a dashboard page now, so there is no
+    // client-side gate to run here. Leaving one would only be decorative.
+
     // Setup Navigation Highlighting
     const navItems = document.querySelectorAll('.nav-item');
     navItems.forEach(item => {
