@@ -458,3 +458,80 @@ class TwoFactorTests(TestCase):
         )
         self.client.login(email='civilian@example.com', password='correct-horse-battery')
         self.assertEqual(self.client.get(self.setup_url).status_code, 403)
+
+
+class NotificationRecipientCountTests(TestCase):
+    """
+    The dashboard reported 50 and 100 recipients on an install with five users.
+    recipients_count is a stored snapshot, so rows written by hand or at another
+    time kept a stale figure forever.
+    """
+
+    def setUp(self):
+        from apps.users_and_subs.models import UserProfile
+
+        self.staff = User.objects.create_user(
+            email='staff@example.com', password='correct-horse-battery',
+            first_name='Staff', last_name='Member',
+        )
+        self.staff.is_staff = True
+        self.staff.is_superuser = True
+        self.staff.save()
+
+        # Five users total: two paying, three not (staff included).
+        paid = User.objects.create_user(
+            email='paid@example.com', password='x', first_name='P', last_name='One',
+        )
+        paid.is_pro = True
+        paid.save()
+
+        profile_paid = User.objects.create_user(
+            email='profile@example.com', password='x', first_name='P', last_name='Two',
+        )
+        UserProfile.objects.update_or_create(
+            user=profile_paid, defaults={'subscription_type': 'Yearly $49'},
+        )
+
+        User.objects.create_user(
+            email='free1@example.com', password='x', first_name='F', last_name='One',
+        )
+        User.objects.create_user(
+            email='free2@example.com', password='x', first_name='F', last_name='Two',
+        )
+
+        self.client.force_login(self.staff)
+        self.url = '/api/v1/core/admin/notifications/'
+
+    def _create(self, audience):
+        response = self.client.post(self.url, {
+            'title': 'Test', 'message': 'Body', 'audience': audience,
+        })
+        self.assertEqual(response.status_code, 201, response.content)
+        from apps.core.models import AdminNotification
+        return AdminNotification.objects.latest('created_at')
+
+    def test_counts_reflect_the_real_user_base(self):
+        self.assertEqual(self._create('all').recipients_count, User.objects.count())
+
+    def test_pro_audience_includes_paid_profiles_not_just_the_flag(self):
+        # Counting only is_pro would say 1 and disagree with the analytics page.
+        self.assertEqual(self._create('pro').recipients_count, 2)
+
+    def test_free_is_everyone_else(self):
+        self.assertEqual(self._create('free').recipients_count, 3)
+        self.assertEqual(
+            self._create('free').recipients_count + self._create('pro').recipients_count,
+            User.objects.count(),
+        )
+
+    def test_a_stale_count_is_repaired_by_the_command(self):
+        from django.core.management import call_command
+        from apps.core.models import AdminNotification
+
+        notification = self._create('all')
+        AdminNotification.objects.filter(id=notification.id).update(recipients_count=100)
+
+        call_command('recount_notifications', verbosity=0)
+
+        notification.refresh_from_db()
+        self.assertEqual(notification.recipients_count, User.objects.count())

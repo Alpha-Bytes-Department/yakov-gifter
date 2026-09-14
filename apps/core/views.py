@@ -516,15 +516,13 @@ class AdminNotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminUser]
 
     def perform_create(self, serializer):
-        # Dummy logic: Set recipients based on audience
-        instance = serializer.save()
-        if instance.audience == 'all':
-            instance.recipients_count = User.objects.count()
-        elif instance.audience == 'pro':
-            instance.recipients_count = User.objects.filter(is_pro=True).count()
-        else:
-            instance.recipients_count = User.objects.filter(is_pro=False).count()
-        instance.save()
+        serializer.save().recount_recipients()
+
+    def perform_update(self, serializer):
+        # Changing the audience changes who receives it, so the stored count has
+        # to follow — otherwise editing a notification leaves a figure that
+        # describes the audience it used to have.
+        serializer.save().recount_recipients()
 
 from rest_framework.permissions import IsAuthenticated
 from django.db import models

@@ -18,8 +18,40 @@ class AdminNotification(TimeStampedModel):
         ('pro', 'Pro Subscribers'),
         ('free', 'Free Users')
     ], default='all')
-    recipients_count = models.IntegerField(default=0)
-    
+    # A snapshot taken when the notification is created or its audience changes,
+    # not a live figure. That is why the dashboard showed 50 and 100 recipients
+    # against an install with five users: those rows were written once, by hand
+    # or at a different time, and never revisited.
+    # `manage.py recount_notifications` repairs existing rows.
+    recipients_count = models.IntegerField(default=0, editable=False)
+
+    def audience_queryset(self):
+        """The users this notification is aimed at."""
+        from django.contrib.auth import get_user_model
+        from django.db.models import Q
+
+        users = get_user_model().objects.all()
+        if self.audience == 'all':
+            return users
+
+        # "Pro" must mean the same here as on the analytics page, which counts a
+        # paid profile as well as the is_pro flag.
+        paid = (
+            Q(is_pro=True)
+            | Q(profile__subscription_type__in=['Monthly $5', 'Yearly $49'])
+            | Q(profile__has_one_time_purchase_36=True)
+        )
+
+        if self.audience == 'pro':
+            return users.filter(paid).distinct()
+        return users.exclude(paid).distinct()
+
+    def recount_recipients(self, save=True):
+        self.recipients_count = self.audience_queryset().count()
+        if save:
+            self.save(update_fields=['recipients_count'])
+        return self.recipients_count
+
     def __str__(self):
         return self.title
 
