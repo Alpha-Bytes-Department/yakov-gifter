@@ -751,6 +751,48 @@ class DashboardUsesCookieAuthTests(TestCase):
         self.assertIn('X-CSRFToken', source)
         self.assertIn("credentials: 'same-origin'", source)
 
+    def test_no_script_loaded_by_a_dashboard_page_uses_token_auth(self):
+        """
+        Audits the scripts the pages actually pull in, not just the shared one.
+
+        Checking only admin_core.js is how schedule.html kept loading an older
+        admin_dashboard.js that reassigned window.apiFetch to the JWT version
+        and, on the 401 that produced, redirected to /dashboard/ — which read as
+        "the schedule link sends me back to the dashboard".
+        """
+        import re
+        from django.contrib.staticfiles import finders
+
+        self.client.force_login(self.staff)
+        checked = 0
+
+        for name in self.LIVE_PAGES:
+            body = self.client.get(reverse(name), follow=True).content.decode()
+
+            for src in re.findall(r"""<script[^>]+src=["']([^"']+)["']""", body):
+                relative = src.split('?')[0].replace('/static/', '', 1).lstrip('/')
+                path = finders.find(relative)
+                if not path:
+                    continue
+
+                with open(path, encoding='utf-8') as handle:
+                    source = handle.read()
+
+                checked += 1
+                with self.subTest(page=name, script=relative):
+                    self.assertNotIn(
+                        "localStorage.getItem('access_token')", source,
+                        msg=f'{relative} still reads a token from localStorage',
+                    )
+                    self.assertNotIn(
+                        'Bearer ${token}', source,
+                        msg=f'{relative} still sends an Authorization header',
+                    )
+
+        # Guard the guard: a path change that silently matched nothing would
+        # otherwise let this pass without inspecting a single file.
+        self.assertGreater(checked, 0, 'no dashboard scripts were resolved')
+
 
 class StaticFilesHashingTests(TestCase):
     """
