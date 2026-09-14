@@ -626,3 +626,61 @@ class PublicPageTests(TestCase):
 
     def test_api_root_still_answers_for_monitoring(self):
         self.assertEqual(self.client.get('/api/').status_code, 200)
+
+
+class DemoContentAuditTests(TestCase):
+    """
+    The client saw test data in notifications and testimonials. Those rows live
+    in the production database, so the deliverable is a safe way to find them.
+    """
+
+    def setUp(self):
+        from apps.content.models import Testimonial
+
+        self.real_user = User.objects.create_user(
+            email='real@ezlain.app', password='x', first_name='R', last_name='Eal',
+        )
+        self.test_user = User.objects.create_user(
+            email='qa@example.com', password='x', first_name='Q', last_name='A',
+        )
+
+        self.genuine = Testimonial.objects.create(
+            user=self.real_user, author_name='A Parent',
+            content='My son learned his whole parsha with this.', is_approved=True,
+        )
+        self.placeholder = Testimonial.objects.create(
+            user=self.real_user, author_name='Tester',
+            content='Lorem ipsum dolor sit amet', is_approved=True,
+        )
+        self.from_test_account = Testimonial.objects.create(
+            user=self.test_user, author_name='QA', content='checking', is_approved=True,
+        )
+
+    def _run(self, *args):
+        from io import StringIO
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command('find_demo_content', *args, stdout=out)
+        return out.getvalue()
+
+    def test_reports_without_deleting_by_default(self):
+        from apps.content.models import Testimonial
+
+        output = self._run()
+        self.assertIn('Lorem ipsum', output)
+        self.assertIn('qa@example.com', output)
+        # Nothing removed until asked.
+        self.assertEqual(Testimonial.objects.count(), 3)
+
+    def test_leaves_genuine_testimonials_alone(self):
+        from apps.content.models import Testimonial
+
+        self._run('--delete')
+        remaining = list(Testimonial.objects.values_list('id', flat=True))
+        self.assertIn(self.genuine.id, remaining)
+        self.assertNotIn(self.placeholder.id, remaining)
+        self.assertNotIn(self.from_test_account.id, remaining)
+
+    def test_finds_accounts_on_reserved_domains(self):
+        self.assertIn('qa@example.com', self._run())
