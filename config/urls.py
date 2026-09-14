@@ -13,6 +13,7 @@ from apps.core.views import (
     AdminSettingsView, AdminCoachingView, AdminUsersView, AdminScheduleView,
     AdminFeedbackView, AdminTestimonialsView,
     DashboardSessionLoginView, DashboardSessionLogoutView,
+    TwoFactorSetupView, TwoFactorDisableView,
 )
 
 
@@ -67,6 +68,8 @@ urlpatterns = [
     path('dashboard/login/', AdminLoginView.as_view(), name='admin_dashboard_login'),
     path('dashboard/session-login/', DashboardSessionLoginView.as_view(), name='admin_dashboard_session_login'),
     path('dashboard/session-logout/', DashboardSessionLogoutView.as_view(), name='admin_dashboard_session_logout'),
+    path('dashboard/2fa/setup/', TwoFactorSetupView.as_view(), name='admin_dashboard_2fa_setup'),
+    path('dashboard/2fa/disable/', TwoFactorDisableView.as_view(), name='admin_dashboard_2fa_disable'),
     path('dashboard/', AdminDashboardView.as_view(), name='admin_dashboard_overview'),
     path('dashboard/analytics/', AdminAnalyticsView.as_view(), name='admin_dashboard_analytics'),
     path('dashboard/audio/', AdminAudioView.as_view(), name='admin_dashboard_audio'),

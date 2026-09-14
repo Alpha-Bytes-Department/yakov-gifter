@@ -324,3 +324,137 @@ class LoginLockoutTests(TestCase):
         self.client.logout()
         # Budget is full again, so a later typo is not penalised by old failures.
         self.assertEqual(self._attempt('wrong').status_code, 401)
+
+
+class TwoFactorTests(TestCase):
+    """
+    The login page advertised "2FA Enabled" while nothing was implemented.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+        self.staff = User.objects.create_user(
+            email='staff@example.com', password='correct-horse-battery',
+            first_name='Staff', last_name='Member',
+        )
+        self.staff.is_staff = True
+        self.staff.save()
+        self.login_url = reverse('admin_dashboard_session_login')
+        self.setup_url = reverse('admin_dashboard_2fa_setup')
+
+    def _sign_in(self, otp=None):
+        body = {'email': 'staff@example.com', 'password': 'correct-horse-battery'}
+        if otp is not None:
+            body['otp'] = otp
+        return self.client.post(
+            self.login_url, data=json.dumps(body), content_type='application/json'
+        )
+
+    def _enrol(self):
+        """Completes enrolment, returning (secret, recovery_codes)."""
+        import pyotp
+
+        self.client.force_login(self.staff)
+        secret = self.client.get(self.setup_url).json()['secret']
+        response = self.client.post(
+            self.setup_url,
+            data=json.dumps({'otp': pyotp.TOTP(secret).now()}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        codes = response.json()['recovery_codes']
+        self.client.logout()
+        self.staff.refresh_from_db()
+        return secret, codes
+
+    def test_enrolment_requires_a_matching_code(self):
+        self.client.force_login(self.staff)
+        self.client.get(self.setup_url)
+
+        response = self.client.post(
+            self.setup_url, data=json.dumps({'otp': '000000'}),
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 400)
+
+        self.staff.refresh_from_db()
+        # Not enabled, so an abandoned enrolment cannot lock the admin out.
+        self.assertIsNone(self.staff.totp_confirmed_at)
+
+    def test_enrolment_enables_it_and_issues_recovery_codes(self):
+        _, codes = self._enrol()
+        self.assertIsNotNone(self.staff.totp_confirmed_at)
+        self.assertEqual(len(codes), 8)
+        # Stored hashed, never in the clear.
+        for code in codes:
+            self.assertNotIn(code, self.staff.totp_recovery_codes)
+
+    def test_password_alone_is_no_longer_enough(self):
+        self._enrol()
+        response = self._sign_in()
+        self.assertEqual(response.status_code, 401)
+        self.assertTrue(response.json()['otp_required'])
+        self.assertNotIn('sessionid', response.cookies)
+
+    def test_correct_code_signs_in(self):
+        import pyotp
+
+        secret, _ = self._enrol()
+        response = self._sign_in(pyotp.TOTP(secret).now())
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(
+            self.client.get(reverse('admin_dashboard_overview')).status_code, 200
+        )
+
+    def test_wrong_code_is_refused(self):
+        self._enrol()
+        self.assertEqual(self._sign_in('000000').status_code, 401)
+
+    def test_a_recovery_code_works_once(self):
+        _, codes = self._enrol()
+
+        self.assertEqual(self._sign_in(codes[0]).status_code, 200)
+        self.client.logout()
+
+        # Single use — replaying it must fail.
+        self.assertEqual(self._sign_in(codes[0]).status_code, 401)
+        # The others still work.
+        self.assertEqual(self._sign_in(codes[1]).status_code, 200)
+
+    def test_accounts_without_2fa_are_unaffected(self):
+        self.assertEqual(self._sign_in().status_code, 200)
+
+    def test_disabling_requires_the_password(self):
+        self._enrol()
+        self.client.force_login(self.staff)
+        url = reverse('admin_dashboard_2fa_disable')
+
+        self.assertEqual(
+            self.client.post(
+                url, data=json.dumps({'password': 'wrong'}),
+                content_type='application/json',
+            ).status_code,
+            403,
+        )
+        self.staff.refresh_from_db()
+        self.assertIsNotNone(self.staff.totp_confirmed_at)
+
+        self.assertEqual(
+            self.client.post(
+                url, data=json.dumps({'password': 'correct-horse-battery'}),
+                content_type='application/json',
+            ).status_code,
+            200,
+        )
+        self.staff.refresh_from_db()
+        self.assertIsNone(self.staff.totp_confirmed_at)
+
+    def test_setup_is_staff_only(self):
+        User.objects.create_user(
+            email='civilian@example.com', password='correct-horse-battery',
+            first_name='Civ', last_name='Ilian',
+        )
+        self.client.login(email='civilian@example.com', password='correct-horse-battery')
+        self.assertEqual(self.client.get(self.setup_url).status_code, 403)

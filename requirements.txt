@@ -16,3 +16,5 @@ drf-spectacular==0.30.0
 stripe
 django-unfold
 pyluach
+pyotp
+qrcode

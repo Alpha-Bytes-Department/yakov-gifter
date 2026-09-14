@@ -32,6 +32,14 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     invite_code = models.CharField(max_length=10, unique=True, blank=True, null=True, db_index=True)
     referral_code = models.CharField(max_length=20, unique=True, blank=True, null=True, db_index=True)
 
+    # Two-factor authentication (staff only — see apps/accounts/twofactor.py).
+    # The secret only counts once totp_confirmed_at is set: an admin who starts
+    # enrolment and walks away must not be locked out by a secret their
+    # authenticator never actually stored.
+    totp_secret = models.CharField(max_length=64, blank=True, default='')
+    totp_confirmed_at = models.DateTimeField(null=True, blank=True)
+    totp_recovery_codes = models.JSONField(default=list, blank=True)
+
     # Subscription Fields (RevenueCat)
     is_pro = models.BooleanField(default=False)
     rc_original_app_user_id = models.CharField(max_length=255, blank=True, null=True)

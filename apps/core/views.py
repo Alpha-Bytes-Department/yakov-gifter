@@ -707,12 +707,162 @@ class DashboardSessionLoginView(View):
                 )
             return JsonResponse({'detail': 'Invalid credentials.'}, status=401)
 
+        # Second factor, when the account has finished enrolling. A started but
+        # unconfirmed enrolment does not gate sign-in.
+        if user.totp_confirmed_at:
+            otp = (payload.get('otp') or '').strip()
+            if not otp:
+                # Password was right; the form now needs to ask for the code.
+                return JsonResponse(
+                    {'detail': 'Two-factor code required.', 'otp_required': True},
+                    status=401,
+                )
+
+            if not self._second_factor_ok(user, otp):
+                logger.warning('Dashboard 2FA failed for %s from %s', email, ip)
+                if register_failure(email, ip):
+                    return JsonResponse(
+                        {'detail': 'Too many attempts. Try again in 15 minutes.'},
+                        status=429,
+                    )
+                return JsonResponse(
+                    {'detail': 'Invalid two-factor code.', 'otp_required': True},
+                    status=401,
+                )
+
         reset(email, ip)
         auth_login(request, user)
         return JsonResponse({'detail': 'Signed in.'})
+
+    @staticmethod
+    def _second_factor_ok(user, otp):
+        """Accepts a TOTP code, or burns a single-use recovery code."""
+        from apps.accounts.twofactor import hash_recovery_code, verify_code
+
+        if verify_code(user.totp_secret, otp):
+            return True
+
+        digest = hash_recovery_code(otp)
+        remaining = list(user.totp_recovery_codes or [])
+        if digest in remaining:
+            remaining.remove(digest)
+            user.totp_recovery_codes = remaining
+            user.save(update_fields=['totp_recovery_codes'])
+            logger.warning(
+                'Recovery code used for %s; %d remaining', user.email, len(remaining)
+            )
+            return True
+
+        return False
 
 
 class DashboardSessionLogoutView(View):
     def post(self, request, *args, **kwargs):
         auth_logout(request)
         return JsonResponse({'detail': 'Signed out.'})
+
+
+class TwoFactorSetupView(View):
+    """
+    Enrolment for a signed-in staff account.
+
+    GET  issues a secret and the otpauth:// URI to scan.
+    POST confirms it with a code from the authenticator, which is what actually
+         turns 2FA on and hands back the recovery codes.
+
+    The confirm step matters: writing the secret at GET time would lock out an
+    admin who opened the page and closed it before scanning.
+    """
+
+    def _guard(self, request):
+        if not request.user.is_authenticated or not request.user.is_staff:
+            return JsonResponse({'detail': 'Staff access required.'}, status=403)
+        return None
+
+    def get(self, request, *args, **kwargs):
+        from apps.accounts.twofactor import generate_secret, provisioning_uri
+
+        denied = self._guard(request)
+        if denied:
+            return denied
+
+        if request.user.totp_confirmed_at:
+            return JsonResponse(
+                {'detail': 'Two-factor is already enabled.', 'enabled': True}
+            )
+
+        # A pending secret is reused so refreshing the page does not invalidate
+        # a QR code the admin has already scanned.
+        secret = request.user.totp_secret or generate_secret()
+        if secret != request.user.totp_secret:
+            request.user.totp_secret = secret
+            request.user.save(update_fields=['totp_secret'])
+
+        return JsonResponse({
+            'enabled': False,
+            'secret': secret,
+            'otpauth_url': provisioning_uri(request.user, secret),
+        })
+
+    def post(self, request, *args, **kwargs):
+        from apps.accounts.twofactor import (
+            generate_recovery_codes, hash_recovery_code, verify_code,
+        )
+
+        denied = self._guard(request)
+        if denied:
+            return denied
+
+        try:
+            payload = json.loads(request.body or '{}')
+        except ValueError:
+            return JsonResponse({'detail': 'Invalid request.'}, status=400)
+
+        if request.user.totp_confirmed_at:
+            return JsonResponse({'detail': 'Already enabled.'}, status=400)
+
+        if not request.user.totp_secret:
+            return JsonResponse({'detail': 'Start enrolment first.'}, status=400)
+
+        if not verify_code(request.user.totp_secret, payload.get('otp')):
+            return JsonResponse({'detail': 'That code did not match.'}, status=400)
+
+        # Shown once, stored hashed.
+        codes = generate_recovery_codes()
+        request.user.totp_recovery_codes = [hash_recovery_code(c) for c in codes]
+        request.user.totp_confirmed_at = timezone.now()
+        request.user.save(
+            update_fields=['totp_recovery_codes', 'totp_confirmed_at']
+        )
+        logger.info('Two-factor enabled for %s', request.user.email)
+
+        return JsonResponse({'detail': 'Two-factor enabled.', 'recovery_codes': codes})
+
+
+class TwoFactorDisableView(View):
+    """
+    Turns 2FA off. Requires the current password, so an unattended open session
+    cannot quietly strip the second factor off the account.
+    """
+
+    def post(self, request, *args, **kwargs):
+        if not request.user.is_authenticated or not request.user.is_staff:
+            return JsonResponse({'detail': 'Staff access required.'}, status=403)
+
+        try:
+            payload = json.loads(request.body or '{}')
+        except ValueError:
+            return JsonResponse({'detail': 'Invalid request.'}, status=400)
+
+        if not request.user.check_password(payload.get('password') or ''):
+            return JsonResponse({'detail': 'Password incorrect.'}, status=403)
+
+        request.user.totp_secret = ''
+        request.user.totp_confirmed_at = None
+        request.user.totp_recovery_codes = []
+        request.user.save(
+            update_fields=['totp_secret', 'totp_confirmed_at', 'totp_recovery_codes']
+        )
+        logger.warning('Two-factor disabled for %s', request.user.email)
+
+        return JsonResponse({'detail': 'Two-factor disabled.'})
