@@ -115,22 +115,12 @@ class Command(BaseCommand):
                     }
                 )
 
-        # Seed next Shabbat ReadingSchedule if not present
-        today = datetime.date.today()
-        # Find coming Saturday
-        days_until_saturday = (5 - today.weekday()) % 7
-        if days_until_saturday == 0:
-            days_until_saturday = 7
-        next_shabbat = today + datetime.timedelta(days=days_until_saturday)
-        
-        first_parsha = Parsha.objects.first()
-        if first_parsha:
-            ReadingSchedule.objects.get_or_create(
-                date=next_shabbat,
-                defaults={
-                    'parsha': first_parsha,
-                    'hebrew_date': 'Shabbat Parashat ' + first_parsha.name_hebrew
-                }
-            )
-
+        # The reading schedule is deliberately NOT seeded here any more. This
+        # used to assign Parsha.objects.first() to the coming Shabbos — and
+        # Parsha is ordered by id, so "first" is always Bereishis whatever the
+        # date. That is how the live schedule came to show Bereishis in August.
         self.stdout.write(self.style.SUCCESS(f"Successfully seeded {created_count} new Parshas and tracks! Total Parshas: {Parsha.objects.count()}"))
+        self.stdout.write(self.style.WARNING(
+            'Next: run `manage.py seed_reading_schedule` to build the weekly '
+            'schedule from the Hebrew calendar.'
+        ))

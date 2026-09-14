@@ -53,3 +53,65 @@ class BarMitzvahDateTests(TestCase):
             with self.subTest(dob=dob):
                 self.assertIsInstance(hebrew_bar_mitzvah_date(dob), datetime.date)
             dob += datetime.timedelta(days=7)
+
+
+class ReadingScheduleSeedTests(TestCase):
+    """
+    The live schedule showed Bereishis in August. seed_parshas assigned
+    Parsha.objects.first() to the coming Shabbos, and Parsha is ordered by id,
+    so "first" was always Bereishis whatever the date.
+
+    The expected values here match test/hebrew_date_utils_test.dart in the
+    mobile app — the two must never disagree about a week's reading.
+    """
+
+    def setUp(self):
+        from django.core.management import call_command
+        call_command('seed_parshas', verbosity=0)
+        call_command(
+            'seed_reading_schedule', start='2025-08-01', years=1, verbosity=0
+        )
+
+    def test_august_reads_devarim_not_bereishis(self):
+        from apps.parshas.models import ReadingSchedule
+
+        august = list(
+            ReadingSchedule.objects
+            .filter(date__year=2025, date__month=8)
+            .order_by('date')
+            .values_list('parsha__name', flat=True)
+        )
+        self.assertEqual(
+            august,
+            ['Devarim', "Va'etchanan", 'Eikev', "Re'eh", 'Shoftim'],
+        )
+        self.assertNotIn('Bereishis', august)
+
+    def test_bereishis_falls_in_autumn(self):
+        from apps.parshas.models import ReadingSchedule
+
+        for row in ReadingSchedule.objects.filter(parsha__name='Bereishis'):
+            self.assertIn(row.date.month, (9, 10, 11))
+
+    def test_every_scheduled_date_is_a_saturday(self):
+        from apps.parshas.models import ReadingSchedule
+
+        for row in ReadingSchedule.objects.all():
+            self.assertEqual(row.date.weekday(), 5, msg=f'{row.date}')
+
+    def test_rerunning_corrects_a_wrong_row_rather_than_duplicating(self):
+        from django.core.management import call_command
+        from apps.parshas.models import Parsha, ReadingSchedule
+
+        row = ReadingSchedule.objects.get(date=datetime.date(2025, 8, 2))
+        row.parsha = Parsha.objects.get(name='Bereishis')
+        row.save()
+
+        before = ReadingSchedule.objects.count()
+        call_command(
+            'seed_reading_schedule', start='2025-08-01', years=1, verbosity=0
+        )
+
+        row.refresh_from_db()
+        self.assertEqual(row.parsha.name, 'Devarim')
+        self.assertEqual(ReadingSchedule.objects.count(), before)
