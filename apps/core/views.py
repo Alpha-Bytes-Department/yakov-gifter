@@ -59,8 +59,15 @@ class AdminLoginView(TemplateView):
     template_name = 'admin_dashboard/login.html'
 
     def dispatch(self, request, *args, **kwargs):
-        # Already signed in? Skip the form.
+        # Already signed in? Skip the form and continue where they were headed.
+        # Always sending them to the overview made any stray redirect here look
+        # like "the schedule page sends me back to the dashboard".
         if request.user.is_authenticated and request.user.is_staff:
+            next_url = request.GET.get('next', '')
+            # Only same-site relative paths, so ?next= cannot be used to bounce
+            # a signed-in admin off to another host.
+            if next_url.startswith('/') and not next_url.startswith('//'):
+                return redirect(next_url)
             return redirect('admin_dashboard_overview')
         return super().dispatch(request, *args, **kwargs)
 

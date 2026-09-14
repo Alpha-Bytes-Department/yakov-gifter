@@ -399,7 +399,6 @@
                     formData.append("audio_file", file);
                 }
 
-                const token = localStorage.getItem('access_token');
                 currentXhr = new XMLHttpRequest();
                 const xhr = currentXhr;
 
@@ -446,7 +445,17 @@
                 const url = '/api/v1/core/admin/audio_recordings/';
 
                 xhr.open(method, url, true);
-                xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+                // Authentication is the session cookie, which the browser
+                // attaches to a same-origin request on its own. Sending an
+                // Authorization header here is actively harmful: DRF tries the
+                // JWT backend first, and a header of "Bearer null" (which is
+                // what the old localStorage read produced once sign-in moved to
+                // sessions) fails as a malformed token and returns 401 before
+                // the cookie is ever looked at — logging the uploader out.
+                xhr.withCredentials = true;
+                xhr.setRequestHeader('X-CSRFToken', getCookie('csrftoken') || '');
+                // Content-Type is deliberately not set: the browser has to add
+                // the multipart boundary itself.
                 xhr.send(formData);
             };
 

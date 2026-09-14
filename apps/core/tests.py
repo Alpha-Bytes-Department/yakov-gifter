@@ -690,3 +690,145 @@ class DemoContentAuditTests(TestCase):
 
     def test_finds_accounts_on_reserved_domains(self):
         self.assertIn('qa@example.com', self._run())
+
+
+class DashboardUsesCookieAuthTests(TestCase):
+    """
+    Guards the invariant that broke audio upload.
+
+    Sign-in moved from a JWT in localStorage to a Django session cookie, but the
+    upload used a hand-rolled XMLHttpRequest that still read the old token. With
+    nothing in storage it sent "Authorization: Bearer null"; DRF tries the JWT
+    backend first, rejected that as a malformed token with a 401, and the page's
+    401 handler logged the uploader straight out mid-upload.
+
+    Server-side tests could not catch it — the API accepts session auth
+    perfectly well. The defect was entirely in the page, so this asserts against
+    what the pages actually serve.
+    """
+
+    LIVE_PAGES = DASHBOARD_PAGES + ['admin_dashboard_login']
+
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            email='staff@example.com', password='correct-horse-battery',
+            first_name='Staff', last_name='Member',
+        )
+        self.staff.is_staff = True
+        self.staff.save()
+
+    def test_no_page_reads_an_auth_token_from_local_storage(self):
+        self.client.force_login(self.staff)
+
+        for name in self.LIVE_PAGES:
+            with self.subTest(page=name):
+                body = self.client.get(reverse(name), follow=True).content.decode()
+                self.assertNotIn("localStorage.getItem('access_token')", body)
+                self.assertNotIn('localStorage.getItem("access_token")', body)
+                self.assertNotIn("localStorage.setItem('access_token'", body)
+
+    def test_no_page_sends_a_bearer_header(self):
+        self.client.force_login(self.staff)
+
+        for name in self.LIVE_PAGES:
+            with self.subTest(page=name):
+                body = self.client.get(reverse(name), follow=True).content.decode()
+                # The session cookie authenticates these requests. An
+                # Authorization header sends DRF down the JWT path instead.
+                self.assertNotIn('Bearer ${token}', body)
+                self.assertNotIn("'Authorization'", body)
+
+    def test_shared_dashboard_script_uses_the_cookie(self):
+        from pathlib import Path
+        from django.conf import settings
+
+        script = Path(settings.BASE_DIR) / 'apps/core/static/js/admin_core.js'
+        source = script.read_text(encoding='utf-8')
+
+        self.assertNotIn("localStorage.getItem('access_token')", source)
+        self.assertNotIn('Authorization', source)
+        # CSRF is required once authentication is a cookie.
+        self.assertIn('X-CSRFToken', source)
+        self.assertIn("credentials: 'same-origin'", source)
+
+
+class StaticFilesHashingTests(TestCase):
+    """
+    Static assets must be served under content-hashed names.
+
+    nginx serves /static/ with `Cache-Control: public, immutable` for 30 days.
+    That is only safe when a changed file gets a new URL. Django 5.1 removed
+    STATICFILES_STORAGE, and with Django unpinned at >=5.0 the project resolved
+    to 6.x — the setting was silently ignored, filenames stopped being hashed,
+    and a deployed JS change could no longer reach a browser that had already
+    cached the old file. Admins kept running the previous admin_core.js and were
+    bounced around the dashboard by its stale auth gate.
+
+    The failure is production-only and silent, so it is asserted against the
+    settings module rather than the running (development) configuration.
+    """
+
+    def _production_settings_source(self):
+        from pathlib import Path
+        from django.conf import settings
+
+        return (
+            Path(settings.BASE_DIR) / 'config/settings/production.py'
+        ).read_text(encoding='utf-8')
+
+    def test_production_declares_a_manifest_static_backend(self):
+        source = self._production_settings_source()
+        self.assertIn('STORAGES', source)
+        self.assertIn('ManifestStaticFilesStorage', source)
+
+    def test_production_does_not_rely_on_the_removed_setting(self):
+        source = self._production_settings_source()
+        # Assigning it is a no-op on Django 5.1+ and reads as if hashing is on.
+        self.assertNotIn('STATICFILES_STORAGE =', source)
+
+    def test_django_is_pinned_below_the_next_major(self):
+        from pathlib import Path
+        from django.conf import settings
+
+        requirements = (
+            Path(settings.BASE_DIR) / 'requirements.txt'
+        ).read_text(encoding='utf-8')
+        django_line = next(
+            line for line in requirements.splitlines()
+            if line.strip().lower().startswith('django>')
+            or line.strip().lower().startswith('django=')
+        )
+        # An open-ended pin is how a major upgrade silently removed a setting
+        # this project depended on.
+        self.assertIn('<', django_line, msg=f'unpinned: {django_line!r}')
+
+
+class LoginRedirectTargetTests(TestCase):
+    def setUp(self):
+        self.staff = User.objects.create_user(
+            email='staff@example.com', password='correct-horse-battery',
+            first_name='Staff', last_name='Member',
+        )
+        self.staff.is_staff = True
+        self.staff.save()
+        self.client.force_login(self.staff)
+
+    def test_signed_in_admin_continues_to_the_requested_page(self):
+        response = self.client.get(
+            reverse('admin_dashboard_login') + '?next=/dashboard/schedule/'
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/dashboard/schedule/')
+
+    def test_falls_back_to_the_overview_without_a_next(self):
+        response = self.client.get(reverse('admin_dashboard_login'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/dashboard/', response['Location'])
+
+    def test_next_cannot_bounce_to_another_host(self):
+        for hostile in ['//evil.example.com/', 'https://evil.example.com/']:
+            with self.subTest(next=hostile):
+                response = self.client.get(
+                    reverse('admin_dashboard_login') + f'?next={hostile}'
+                )
+                self.assertNotIn('evil.example.com', response['Location'])

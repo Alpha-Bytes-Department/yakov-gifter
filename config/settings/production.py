@@ -41,7 +41,23 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Static files
 MIDDLEWARE.insert(MIDDLEWARE.index('django.middleware.security.SecurityMiddleware') + 1, 'whitenoise.middleware.WhiteNoiseMiddleware')
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# Must be STORAGES, not STATICFILES_STORAGE. That setting was removed in Django
+# 5.1 and is now silently ignored — with Django unpinned at >=5.0 the project
+# resolved to 6.x, static files stopped being hashed, and nginx serves /static/
+# as `immutable` for 30 days. The result was that a deployed JS change could not
+# reach a browser that had already cached the old file: admins kept running the
+# previous admin_core.js and got bounced around the dashboard by its stale
+# auth gate. Hashed names make each build a new URL, which is also what makes
+# the `immutable` header safe.
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 # Email
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
