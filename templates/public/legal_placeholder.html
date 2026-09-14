@@ -1,0 +1,30 @@
+{% extends "public/base.html" %}
+{% block title %}{{ page_title }} — Ezlain{% endblock %}
+{% block description %}{{ page_title }} for Ezlain.{% endblock %}
+{% block heading %}{{ page_title }}{% endblock %}
+
+{% block content %}
+{# This page intentionally ships without drafted legal text. Wording that
+   describes how personal data is handled, or that forms a contract with a
+   paying subscriber, has to come from the operator and their counsel — an
+   invented policy that misdescribes actual practice is worse than none. The
+   route, layout and footer links exist so the copy can be dropped in. #}
+<div class="notice">
+  <strong>Not yet published.</strong>
+  This {{ page_title|lower }} has not been finalised. Until it is, please
+  contact us at <a href="mailto:{{ support_email }}">{{ support_email }}</a>
+  with any question about {{ subject }}.
+</div>
+
+<p>
+  Ezlain is an educational app for learning Torah reading. We are preparing this
+  document and will publish it here.
+</p>
+
+<h2>In the meantime</h2>
+<p>
+  If you would like to know what information your account holds, or want it
+  removed, write to <a href="mailto:{{ support_email }}">{{ support_email }}</a>
+  and we will action it.
+</p>
+{% endblock %}

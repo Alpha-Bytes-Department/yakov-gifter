@@ -586,3 +586,43 @@ class SiteSettingsTests(TestCase):
         from django.core.cache import cache
         cache.delete('site_settings')
         self.assertEqual(SiteSettings.get_settings().timezone, 'Asia/Jerusalem')
+
+
+class PublicPageTests(TestCase):
+    """
+    The audit found no privacy, terms, support, robots.txt or sitemap pages, and
+    a homepage serving raw API JSON.
+    """
+
+    def test_homepage_is_a_landing_page_not_api_json(self):
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/html', response['Content-Type'])
+        self.assertNotIn(b'"status": "operational"', response.content)
+
+    def test_public_pages_are_reachable_anonymously(self):
+        for path in ['/support/', '/privacy/', '/terms/']:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+
+    def test_legal_stubs_say_plainly_that_they_are_unpublished(self):
+        # Better an honest placeholder than invented policy text that
+        # misdescribes what actually happens to a subscriber's data.
+        for path in ['/privacy/', '/terms/']:
+            with self.subTest(path=path):
+                self.assertIn(b'Not yet published', self.client.get(path).content)
+
+    def test_robots_disallows_the_api_and_dashboard(self):
+        body = self.client.get('/robots.txt').content
+        self.assertIn(b'Disallow: /api/', body)
+        self.assertIn(b'Disallow: /dashboard/', body)
+
+    def test_sitemap_is_valid_xml_listing_the_public_pages(self):
+        response = self.client.get('/sitemap.xml')
+        self.assertEqual(response.status_code, 200)
+        for path in [b'/support/', b'/privacy/', b'/terms/']:
+            self.assertIn(path, response.content)
+
+    def test_api_root_still_answers_for_monitoring(self):
+        self.assertEqual(self.client.get('/api/').status_code, 200)

@@ -25,6 +25,23 @@ def api_root(request):
     })
 
 
+SUPPORT_EMAIL = config('SUPPORT_EMAIL', default='support@ezlain.app')
+
+
+class PublicPageView(TemplateView):
+    """A public marketing/legal page, with the support address injected."""
+
+    page_title = ''
+    subject = ''
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['support_email'] = SUPPORT_EMAIL
+        context['page_title'] = self.page_title
+        context['subject'] = self.subject
+        return context
+
+
 def robots_txt(request):
     # The API and dashboard should never be indexed.
     lines = [
@@ -45,6 +62,9 @@ def sitemap_xml(request):
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
         f'<url><loc>{site}/</loc><priority>1.0</priority></url>'
+        f'<url><loc>{site}/support/</loc><priority>0.5</priority></url>'
+        f'<url><loc>{site}/privacy/</loc><priority>0.3</priority></url>'
+        f'<url><loc>{site}/terms/</loc><priority>0.3</priority></url>'
         '</urlset>'
     )
     return HttpResponse(body, content_type='application/xml')
@@ -59,6 +79,30 @@ urlpatterns = [
     path('', TemplateView.as_view(template_name='public/landing.html'), name='landing'),
     path('robots.txt', robots_txt, name='robots'),
     path('sitemap.xml', sitemap_xml, name='sitemap'),
+    path(
+        'support/',
+        PublicPageView.as_view(template_name='public/support.html'),
+        name='support',
+    ),
+    # Privacy and terms ship as stubs on purpose — see the template comment.
+    path(
+        'privacy/',
+        PublicPageView.as_view(
+            template_name='public/legal_placeholder.html',
+            page_title='Privacy Policy',
+            subject='how your information is handled',
+        ),
+        name='privacy',
+    ),
+    path(
+        'terms/',
+        PublicPageView.as_view(
+            template_name='public/legal_placeholder.html',
+            page_title='Terms of Service',
+            subject='your subscription or these terms',
+        ),
+        name='terms',
+    ),
 
     path('api/', api_root),
     path('api/v1/', api_root),
